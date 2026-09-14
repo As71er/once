@@ -1,0 +1,12 @@
+.git
+.gitignore
+.env
+
+README.md
+
+data/
+bin/
+archive/
+
+docker-compose.yaml
+Dockerfile
