@@ -4,7 +4,7 @@
 
 README.md
 
-data/
+data/*db
 bin/
 archive/
 
