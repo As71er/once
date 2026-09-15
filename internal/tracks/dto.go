@@ -1,6 +1,10 @@
 package tracks
 
-import "io"
+import (
+	"io"
+	"os"
+	"time"
+)
 
 type UploadTracksReq struct {
 	ReleaseID    int64
@@ -46,4 +50,9 @@ type ListTracksRelease struct {
 	CoverID   *int64         `json:"cover_id"`
 	Tracks    []TrackSummary `json:"data"`
 	Count     int            `json:"count"`
+}
+
+type TrackDesc struct {
+	File    *os.File
+	ModTime time.Time
 }

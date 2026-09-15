@@ -42,6 +42,23 @@ func (h *handler) GetTrackById(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
+func (h *handler) GetTrack(w http.ResponseWriter, r *http.Request) {
+	id := utils.ParseInt(r.PathValue("id"), -1)
+	if id < 0 {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+
+	track, err := h.service.GetTrack(r.Context(), id)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	defer track.File.Close()
+
+	http.ServeContent(w, r, track.File.Name(), track.ModTime, track.File)
+}
+
 func (h *handler) UploadTracks(w http.ResponseWriter, r *http.Request) {
 	queryParams := r.URL.Query()
 	extractCoverStr := queryParams.Get("extractCover")

@@ -16,6 +16,7 @@ type Service interface {
 	GetTrackById(ctx context.Context, id int) (*TrackSummary, error)
 	UploadTracks(ctx context.Context, req UploadTracksReq) (UploadTracksRes, error)
 	ListTracksRelease(ctx context.Context, id int) (ListTracksRelease, error)
+	GetTrack(ctx context.Context, id int) (TrackDesc, error)
 	DeleteTrack(ctx context.Context, id int) error
 }
 
@@ -236,6 +237,25 @@ func (ts *TrackService) ListTracksRelease(ctx context.Context, id int) (ListTrac
 		Tracks:    tracksSummary,
 		Count:     len(tracksSummary),
 	}, nil
+}
+
+func (ts *TrackService) GetTrack(ctx context.Context, id int) (TrackDesc, error) {
+	track, err := ts.repository.GetById(ctx, int64(id))
+	if err != nil {
+		return TrackDesc{}, err
+	}
+
+	file, fileInfo, err := ts.fileManager.OpenFile(track.AudioFile.Name, track.Release.Name)
+
+	if file == nil || fileInfo == nil {
+		return TrackDesc{}, err
+	}
+
+	return TrackDesc{
+		File:    file,
+		ModTime: fileInfo.ModTime(),
+	}, nil
+
 }
 
 func (ts *TrackService) DeleteTrack(ctx context.Context, id int) error {

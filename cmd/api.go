@@ -56,6 +56,7 @@ func (app *api) mount() http.Handler {
 	v1.HandleFunc("POST /releases/{id}/tracks", trackHandler.UploadTracks) // Check service comment
 
 	v1.HandleFunc("GET /tracks/{id}", trackHandler.GetTrackById) // TODO: same as release getbyid
+	v1.HandleFunc("GET /tracks/{id}/stream", trackHandler.GetTrack)
 	v1.HandleFunc("DELETE /tracks/{id}", trackHandler.DeleteTrack)
 
 	// Mount ver
