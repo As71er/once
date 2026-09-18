@@ -30,6 +30,7 @@ func describe(err error) (status int, clientMsg string) {
 
 func Error(w http.ResponseWriter, r *http.Request, err error) {
 	status, msg := describe(err)
+	LoggerFrom(r.Context()).Warn("bad request", "status", status, "err", err)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)

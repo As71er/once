@@ -6,6 +6,7 @@ import (
 
 	"github.com/As71er/once/internal/artists"
 	"github.com/As71er/once/internal/config"
+	"github.com/As71er/once/internal/httpx"
 	"github.com/As71er/once/internal/releases"
 	"github.com/As71er/once/internal/sqlc"
 	"github.com/As71er/once/internal/tracks"
@@ -27,8 +28,6 @@ func (app *api) mount() http.Handler {
 
 	// Ver
 	v1 := http.NewServeMux()
-
-	// Middlewares
 
 	// Setup
 	fileManager := utils.NewLocalArchive(app.cfg.ArchivePath)
@@ -62,7 +61,12 @@ func (app *api) mount() http.Handler {
 	// Mount ver
 	mux.Handle("/v1/", http.StripPrefix("/v1", v1))
 
-	return mux
+	// Middleware
+	var handler http.Handler = mux
+	handler = httpx.Recover(handler)
+	handler = httpx.Logging(handler)
+
+	return handler
 }
 
 func (app *api) run(h http.Handler) error {

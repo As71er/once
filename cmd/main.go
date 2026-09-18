@@ -27,10 +27,12 @@ func main() {
 
 	goose.SetBaseFS(migrations.EmbedMigrations)
 	if err := goose.SetDialect("sqlite3"); err != nil {
-		panic(err)
+		slog.Error("goose sqlite3 setup", "error", err)
+		os.Exit(1)
 	}
 	if err := goose.Up(conn, "migrations"); err != nil {
-		panic(err)
+		slog.Error("goose migrations", "error", err)
+		os.Exit(1)
 	}
 
 	querier := sqlc.New(conn)
