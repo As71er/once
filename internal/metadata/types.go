@@ -1,5 +1,9 @@
 package metadata
 
+import "errors"
+
+var ErrMetadata = errors.New("failed to extract metadata")
+
 type Stream struct {
 	CodecType     string `json:"codec_type"`
 	CodecName     string `json:"codec_name"`

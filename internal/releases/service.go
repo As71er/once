@@ -4,8 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
+	"os"
 
+	"github.com/As71er/once/internal/apperrors"
 	"github.com/As71er/once/internal/artists"
 	"github.com/As71er/once/internal/utils"
 )
@@ -35,9 +36,12 @@ func NewService(repository Repository, artistRepository artists.Repository, file
 
 func (as *ReleaseService) CreateRelease(ctx context.Context, req CreateReleaseReq) (*CreatedReleaseRes, error) {
 	if !ReleaseType(req.ReleaseType).Valid() {
-		msg := fmt.Sprintf("Invalid release type. Valid types: %s, %s, %s, %s",
-			ReleaseTypeAlbum, ReleaseTypeEP, ReleaseTypeCompilation, ReleaseTypeSingle)
-		return nil, errors.New(msg)
+		return nil, fmt.Errorf(
+			"create release: type %q (valid: %s, %s, %s, %s): %w",
+			req.ReleaseType,
+			ReleaseTypeAlbum, ReleaseTypeEP, ReleaseTypeCompilation, ReleaseTypeSingle,
+			apperrors.ErrInvalidInput,
+		)
 	}
 
 	releaseTitle := req.Title
@@ -72,7 +76,7 @@ func (as *ReleaseService) CreateRelease(ctx context.Context, req CreateReleaseRe
 
 	_, err = as.fileManager.CreateDir(dirName)
 	if err != nil {
-		slog.Error("Failed at processing album", slog.Any("error", err))
+		return nil, err
 	}
 
 	return &CreatedReleaseRes{
@@ -137,7 +141,10 @@ func (s *ReleaseService) GetCover(ctx context.Context, id int) (*CoverArtDesc, e
 
 	file, fileInfo, err := s.fileManager.OpenFile(fmt.Sprintf("%s.png", release.Cover.Name), release.Name)
 	if err != nil {
-		return nil, err
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, fmt.Errorf("cover with id %d: %w", id, apperrors.ErrNotFound)
+		}
+		return nil, fmt.Errorf("open cover with id %d: %w", id, err)
 	}
 
 	coverArt := CoverArtDesc{
@@ -156,9 +163,11 @@ func (s *ReleaseService) GetCoverThumb(ctx context.Context, id int) (*CoverArtDe
 
 	file, fileInfo, err := s.fileManager.OpenFile(fmt.Sprintf("%s.jpg", release.Cover.ThumbName), release.Name)
 	if err != nil {
-		return nil, err
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, fmt.Errorf("cover thumbnail with id %d: %w", id, apperrors.ErrNotFound)
+		}
+		return nil, fmt.Errorf("open cover thumbnail with id %d: %w", id, err)
 	}
-
 	coverArt := CoverArtDesc{
 		File:    file,
 		ModTime: fileInfo.ModTime(),
@@ -170,15 +179,15 @@ func (s *ReleaseService) GetCoverThumb(ctx context.Context, id int) (*CoverArtDe
 func (r *ReleaseService) DeleteRelease(ctx context.Context, id int) error {
 	release, err := r.repository.GetById(ctx, int64(id))
 	if err != nil {
-		return nil
+		return err
 	}
 
 	if err := r.repository.Delete(ctx, int64(id)); err != nil {
-		return nil
+		return err
 	}
 
 	if err := r.fileManager.DeleteDirRecursive(release.Name); err != nil {
-		return nil
+		return err
 	}
 
 	return nil

@@ -2,6 +2,7 @@ package metadata
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -15,13 +16,13 @@ func Extract(path string) (*Tags, error) {
 	cmd := exec.Command("ffprobe", "-hide_banner", "-v", "error", "-print_format", "json", "-show_format", "-show_streams", path)
 	out, err := cmd.Output()
 	if err != nil {
-		return nil, fmt.Errorf("failed at extracting tags: %w", err)
+		return nil, fmt.Errorf("failed at extracting tags: %w", errors.Join(ErrMetadata, err))
 	}
 
 	var ffprobeOut FFprobeAudioOutput
 	err = json.Unmarshal(out, &ffprobeOut)
 	if err != nil {
-		return nil, fmt.Errorf("unmarshal failed: %w", err)
+		return nil, fmt.Errorf("unmarshal failed: %w", errors.Join(ErrMetadata, err))
 	}
 
 	// ffprobe keeps the case sensitive tags from Vorbis vs ID3
@@ -71,12 +72,12 @@ func HasCover(in string) (bool, error) {
 	cmd := exec.Command("ffprobe", "-hide_banner", "-v", "error", "-print_format", "json", "-show_streams", in)
 	out, err := cmd.Output()
 	if err != nil {
-		return false, fmt.Errorf("failed at extracting cover: %w", err)
+		return false, fmt.Errorf("failed at finding cover stream: %w", errors.Join(ErrMetadata, err))
 	}
 
 	var ffprobeOut FFprobeCoverOutput
 	if err := json.Unmarshal(out, &ffprobeOut); err != nil {
-		return false, fmt.Errorf("unmarshal failed: %w", err)
+		return false, fmt.Errorf("unmarshal failed: %w", errors.Join(ErrMetadata, err))
 	}
 
 	for _, stream := range ffprobeOut.Streams {

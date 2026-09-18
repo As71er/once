@@ -1,10 +1,10 @@
 package utils
 
 import (
+	"errors"
 	"fmt"
 	"hash/crc64"
 	"io"
-	"log/slog"
 	"os"
 	"path/filepath"
 	"time"
@@ -32,12 +32,14 @@ func NewLocalArchive(dir string) *LocalArchive {
 	}
 }
 
+var ErrFile = errors.New("file manager error")
+
 func (la *LocalArchive) CreateDir(name string) (string, error) {
 	path := filepath.Join(la.UploadDir, name)
 
 	err := os.MkdirAll(path, 0755)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("create dir %q: %w", path, errors.Join(ErrFile, err))
 	}
 
 	return path, nil
@@ -47,7 +49,7 @@ func (la *LocalArchive) DeleteDirRecursive(dir string) error {
 	path := filepath.Join(la.UploadDir, filepath.Base(dir))
 
 	if err := os.RemoveAll(path); err != nil {
-		return fmt.Errorf("failed to delete %#q: %w", path, err)
+		return fmt.Errorf("create dir %q: %w", path, errors.Join(ErrFile, err))
 	}
 
 	return nil
@@ -58,7 +60,7 @@ func (la *LocalArchive) DeleteFile(name, dir string) error {
 	path := filepath.Join(uploadDir, filepath.Base(name))
 
 	if err := os.Remove(path); err != nil {
-		return fmt.Errorf("failed to delete %#q: %w", path, err)
+		return fmt.Errorf("delete file %q: %w", path, errors.Join(ErrFile, err))
 	}
 
 	return nil
@@ -69,8 +71,7 @@ func (la *LocalArchive) WriteFile(file io.ReadCloser, name, dir string) (string,
 
 	dest, err := os.Create(path)
 	if err != nil {
-		slog.Error("failed to create destination file", slog.Any("error", err))
-		return "", err
+		return "", fmt.Errorf("create file %q: %w", path, errors.Join(ErrFile, err))
 	}
 
 	_, copyErr := io.Copy(dest, file)
@@ -78,11 +79,11 @@ func (la *LocalArchive) WriteFile(file io.ReadCloser, name, dir string) (string,
 
 	if copyErr != nil {
 		os.Remove(path)
-		return "", copyErr
+		return "", fmt.Errorf("copy data to %q: %w", path, ErrFile)
 	}
 	if closeErr != nil {
 		os.Remove(path)
-		return "", closeErr
+		return "", fmt.Errorf("close file %q: %w", path, errors.Join(ErrFile, err))
 	}
 
 	return dest.Name(), nil
@@ -92,14 +93,14 @@ func (la *LocalArchive) GetFileWriter(name, dir string) (io.WriteCloser, string,
 	uploadDir := filepath.Join(la.UploadDir, filepath.Base(dir))
 
 	if err := os.MkdirAll(uploadDir, 0o755); err != nil {
-		return nil, "", fmt.Errorf("failed to create upload directory %q: %w", uploadDir, err)
+		return nil, "", fmt.Errorf("create upload dir %q: %w", uploadDir, errors.Join(ErrFile, err))
 	}
 
 	path := filepath.Join(uploadDir, filepath.Base(name))
 
 	file, err := os.Create(path)
 	if err != nil {
-		return nil, "", fmt.Errorf("failed to create file %q: %w", path, err)
+		return nil, "", fmt.Errorf("create file %q: %w", path, errors.Join(ErrFile, err))
 	}
 
 	return file, path, nil
@@ -114,11 +115,11 @@ func (la *LocalArchive) FileExists(name, dir string) (bool, error) {
 		if os.IsNotExist(err) {
 			return false, nil
 		}
-		return false, err
+		return false, fmt.Errorf("stat file %q: %w", path, errors.Join(ErrFile, err))
 	}
 
 	if info.IsDir() {
-		return false, fmt.Errorf("%s is a directory, not a file", path)
+		return false, fmt.Errorf("check file %q: is a directory: %w", path, ErrFile)
 	}
 
 	return true, nil
@@ -132,18 +133,18 @@ func (la *LocalArchive) RenameFile(oldName, newName, dir string) (string, error)
 	info, err := os.Stat(oldPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return "", fmt.Errorf("source file %q does not exist", oldPath)
+			return "", fmt.Errorf("rename, file %#q does not exist: %w", oldPath, ErrFile)
 		}
-		return "", fmt.Errorf("failed to stat source file %q: %w", oldPath, err)
+		return "", fmt.Errorf("stat file %#q: %w", oldPath, errors.Join(ErrFile, err))
 	}
 	if info.IsDir() {
-		return "", fmt.Errorf("%q is a directory, not a file", oldPath)
+		return "", fmt.Errorf("rename, %#q is a directory, not a file: %w", oldPath, ErrFile)
 	}
 
 	if _, err := os.Stat(newPath); err == nil {
 		return newPath, nil
 	} else if !os.IsNotExist(err) {
-		return "", fmt.Errorf("failed to stat destination file %q: %w", newPath, err)
+		return "", fmt.Errorf("stat file %q: %w", newPath, errors.Join(ErrFile, err))
 	}
 
 	if oldPath == newPath {
@@ -151,7 +152,7 @@ func (la *LocalArchive) RenameFile(oldName, newName, dir string) (string, error)
 	}
 
 	if err := os.Rename(oldPath, newPath); err != nil {
-		return "", fmt.Errorf("failed to rename %q to %q: %w", oldPath, newPath, err)
+		return "", fmt.Errorf("rename %q to %q: %w", oldPath, newPath, errors.Join(ErrFile, err))
 	}
 
 	return newPath, nil
@@ -162,14 +163,15 @@ func (la *LocalArchive) OpenFile(name, dir string) (*os.File, os.FileInfo, error
 	path := filepath.Join(uploadDir, filepath.Base(name))
 
 	file, err := os.Open(path)
+
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to open file %q: %w", path, err)
+		return nil, nil, fmt.Errorf("open file %q: %w", path, errors.Join(ErrFile, err))
 	}
 
 	info, err := file.Stat()
 	if err != nil {
 		file.Close()
-		return nil, nil, fmt.Errorf("failed to stat file %q: %w", path, err)
+		return nil, nil, fmt.Errorf("stat file %q: %w", path, errors.Join(ErrFile, err))
 	}
 
 	return file, info, nil

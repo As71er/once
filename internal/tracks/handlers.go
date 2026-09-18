@@ -1,10 +1,10 @@
 package tracks
 
 import (
-	"encoding/json"
 	"io"
 	"net/http"
 
+	"github.com/As71er/once/internal/httpx"
 	"github.com/As71er/once/internal/utils"
 )
 
@@ -25,33 +25,31 @@ func NewHandler(service Service, limits Limits) *handler {
 }
 
 func (h *handler) GetTrackById(w http.ResponseWriter, r *http.Request) {
-	id := utils.ParseInt(r.PathValue("id"), -1)
-	if id < 0 {
-		w.WriteHeader(http.StatusNotFound)
+	id, err := httpx.PathID(r)
+	if err != nil {
+		httpx.Error(w, r, err)
 		return
 	}
 
 	response, err := h.service.GetTrackById(r.Context(), id)
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
+		httpx.Error(w, r, err)
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(response)
+	httpx.JSON(w, http.StatusOK, response)
 }
 
 func (h *handler) GetTrack(w http.ResponseWriter, r *http.Request) {
-	id := utils.ParseInt(r.PathValue("id"), -1)
-	if id < 0 {
-		w.WriteHeader(http.StatusNotFound)
+	id, err := httpx.PathID(r)
+	if err != nil {
+		httpx.Error(w, r, err)
 		return
 	}
 
 	track, err := h.service.GetTrack(r.Context(), id)
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
+		httpx.Error(w, r, err)
 		return
 	}
 	defer track.File.Close()
@@ -67,14 +65,14 @@ func (h *handler) UploadTracks(w http.ResponseWriter, r *http.Request) {
 	extract := utils.ParseBool(extractCoverStr, true)
 	coverIdx := utils.ParseInt(coverIdxStr, 0)
 
-	id := utils.ParseInt(r.PathValue("id"), -1)
-	if id < 0 {
-		w.WriteHeader(http.StatusNotFound)
+	id, err := httpx.PathID(r)
+	if err != nil {
+		httpx.Error(w, r, err)
 		return
 	}
 
 	if err := r.ParseMultipartForm(h.limits.MaxUploadMemoryMiB << 20); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
+		httpx.Error(w, r, err)
 		return
 	}
 
@@ -99,47 +97,40 @@ func (h *handler) UploadTracks(w http.ResponseWriter, r *http.Request) {
 
 	response, err := h.service.UploadTracks(r.Context(), req)
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
+		httpx.Error(w, r, err)
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	if err := json.NewEncoder(w).Encode(response); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
+	httpx.JSON(w, http.StatusOK, response)
 }
 
 func (h *handler) ListTracksRelease(w http.ResponseWriter, r *http.Request) {
-	id := utils.ParseInt(r.PathValue("id"), -1)
-	if id < 0 {
-		w.WriteHeader(http.StatusBadRequest)
+	id, err := httpx.PathID(r)
+	if err != nil {
+		httpx.Error(w, r, err)
 		return
 	}
 
 	response, err := h.service.ListTracksRelease(r.Context(), id)
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
+		httpx.Error(w, r, err)
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(response)
+	httpx.JSON(w, http.StatusOK, response)
 }
 
 func (h *handler) DeleteTrack(w http.ResponseWriter, r *http.Request) {
-	id := utils.ParseInt(r.PathValue("id"), -1)
-	if id < 0 {
-		w.WriteHeader(http.StatusBadRequest)
+	id, err := httpx.PathID(r)
+	if err != nil {
+		httpx.Error(w, r, err)
 		return
 	}
 
 	if err := h.service.DeleteTrack(r.Context(), id); err != nil {
-		w.WriteHeader(http.StatusNotFound)
+		httpx.Error(w, r, err)
 		return
 	}
 
-	w.WriteHeader(http.StatusOK)
+	w.WriteHeader(http.StatusNoContent)
 }

@@ -3,7 +3,10 @@ package releases
 import (
 	"context"
 	"database/sql"
+	"errors"
+	"fmt"
 
+	"github.com/As71er/once/internal/apperrors"
 	"github.com/As71er/once/internal/sqlc"
 )
 
@@ -45,7 +48,7 @@ func (sr *SqlcRepository) Create(ctx context.Context, release Release) (Release,
 		CoverID:     coverID,
 	})
 	if err != nil {
-		return Release{}, err
+		return Release{}, fmt.Errorf("create release %w", errors.Join(apperrors.ErrCreation, err))
 	}
 
 	return Release{
@@ -65,7 +68,10 @@ func (sr *SqlcRepository) Create(ctx context.Context, release Release) (Release,
 func (sr *SqlcRepository) GetById(ctx context.Context, id int64) (Release, error) {
 	releaseDB, err := sr.db.GetReleaseById(ctx, id)
 	if err != nil {
-		return Release{}, err
+		if errors.Is(err, sql.ErrNoRows) {
+			return Release{}, fmt.Errorf("get release with id %d: %w", id, errors.Join(apperrors.ErrNotFound, err))
+		}
+		return Release{}, fmt.Errorf("get release with id %d: %w", id, err)
 	}
 
 	return Release{
@@ -84,7 +90,8 @@ func (sr *SqlcRepository) GetById(ctx context.Context, id int64) (Release, error
 
 func (sr *SqlcRepository) Delete(ctx context.Context, id int64) error {
 	if err := sr.db.DeleteRelease(ctx, id); err != nil {
-		return err
+		return fmt.Errorf("delete release with id %d: %w", id, errors.Join(apperrors.ErrDeletion, err))
+
 	}
 
 	return nil
@@ -96,7 +103,7 @@ func (sr *SqlcRepository) List(ctx context.Context, limit, offset int64) ([]Rele
 		Offset: offset,
 	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("list releases: %w", err)
 	}
 
 	var releases []Release
@@ -120,7 +127,7 @@ func (sr *SqlcRepository) List(ctx context.Context, limit, offset int64) ([]Rele
 func (sr *SqlcRepository) GetDuration(ctx context.Context, id int64) (float64, error) {
 	duration, err := sr.db.GetReleaseDuration(ctx, id)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("get total duration for release with id %d: %w", id, err)
 	}
 
 	return duration.Float64, nil
@@ -132,7 +139,7 @@ func (sr *SqlcRepository) CreateCover(ctx context.Context, cover Cover) (Cover, 
 		ThumbName: cover.ThumbName,
 	})
 	if err != nil {
-		return Cover{}, err
+		return Cover{}, fmt.Errorf("create cover: %w", errors.Join(apperrors.ErrCreation, err))
 	}
 
 	return Cover{
@@ -145,7 +152,7 @@ func (sr *SqlcRepository) CreateCover(ctx context.Context, cover Cover) (Cover, 
 func (sr *SqlcRepository) GetCoverById(ctx context.Context, id int64) (Cover, error) {
 	coverDB, err := sr.db.GetCoverById(ctx, id)
 	if err != nil {
-		return Cover{}, err
+		return Cover{}, fmt.Errorf("get cover with id %d: %w", id, errors.Join(apperrors.ErrNotFound, err))
 	}
 
 	return Cover{
@@ -158,7 +165,7 @@ func (sr *SqlcRepository) GetCoverById(ctx context.Context, id int64) (Cover, er
 func (sr *SqlcRepository) GetReleaseCover(ctx context.Context, id int64) (Release, error) {
 	release, err := sr.db.GetReleaseCover(ctx, id)
 	if err != nil {
-		return Release{}, err
+		return Release{}, fmt.Errorf("get cover for release with id %d: %w", id, errors.Join(apperrors.ErrNotFound, err))
 	}
 
 	return Release{
@@ -176,7 +183,7 @@ func (sr *SqlcRepository) UpdateReleaseCover(ctx context.Context, releaseID, cov
 		CoverID: sql.NullInt64{Int64: coverID, Valid: true},
 		ID:      releaseID,
 	}); err != nil {
-		return err
+		return fmt.Errorf("update cover for release with id %d: %w", releaseID, err)
 	}
 
 	return nil

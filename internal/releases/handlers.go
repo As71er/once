@@ -2,8 +2,11 @@ package releases
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 
+	"github.com/As71er/once/internal/apperrors"
+	"github.com/As71er/once/internal/httpx"
 	"github.com/As71er/once/internal/utils"
 )
 
@@ -21,39 +24,34 @@ func (h *handler) CreateRelease(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 
 	var release CreateReleaseReq
-	err := json.NewDecoder(r.Body).Decode(&release)
-	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
+	if err := json.NewDecoder(r.Body).Decode(&release); err != nil {
+		httpx.Error(w, r, fmt.Errorf("invalid body request: %w", apperrors.ErrInvalidInput))
 		return
 	}
 
 	response, err := h.service.CreateRelease(r.Context(), release)
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
+		httpx.Error(w, r, err)
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(response)
+	httpx.JSON(w, http.StatusCreated, response)
 }
 
 func (h *handler) GetReleaseById(w http.ResponseWriter, r *http.Request) {
-	id := utils.ParseInt(r.PathValue("id"), -1)
-	if id < 0 {
-		w.WriteHeader(http.StatusBadRequest)
+	id, err := httpx.PathID(r)
+	if err != nil {
+		httpx.Error(w, r, err)
 		return
 	}
 
 	response, err := h.service.GetReleaseById(r.Context(), id)
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
+		httpx.Error(w, r, err)
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(response)
+	httpx.JSON(w, http.StatusOK, response)
 }
 
 func (h *handler) ListReleases(w http.ResponseWriter, r *http.Request) {
@@ -68,25 +66,23 @@ func (h *handler) ListReleases(w http.ResponseWriter, r *http.Request) {
 
 	response, err := h.service.ListReleases(r.Context(), limit, offset)
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
+		httpx.Error(w, r, err)
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(response)
+	httpx.JSON(w, http.StatusOK, response)
 }
 
 func (h *handler) DownloadReleaseCover(w http.ResponseWriter, r *http.Request) {
-	id := utils.ParseInt(r.PathValue("id"), -1)
-	if id < 0 {
-		w.WriteHeader(http.StatusBadRequest)
+	id, err := httpx.PathID(r)
+	if err != nil {
+		httpx.Error(w, r, err)
 		return
 	}
 
 	coverArt, err := h.service.GetCover(r.Context(), id)
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
+		httpx.Error(w, r, err)
 		return
 	}
 	defer coverArt.File.Close()
@@ -95,15 +91,15 @@ func (h *handler) DownloadReleaseCover(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) DownloadReleaseCoverThumb(w http.ResponseWriter, r *http.Request) {
-	id := utils.ParseInt(r.PathValue("id"), -1)
-	if id < 0 {
-		w.WriteHeader(http.StatusBadRequest)
+	id, err := httpx.PathID(r)
+	if err != nil {
+		httpx.Error(w, r, err)
 		return
 	}
 
 	coverArt, err := h.service.GetCoverThumb(r.Context(), id)
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
+		httpx.Error(w, r, err)
 		return
 	}
 	defer coverArt.File.Close()
@@ -112,16 +108,16 @@ func (h *handler) DownloadReleaseCoverThumb(w http.ResponseWriter, r *http.Reque
 }
 
 func (h *handler) DeleteRelease(w http.ResponseWriter, r *http.Request) {
-	id := utils.ParseInt(r.PathValue("id"), -1)
-	if id < 0 {
-		w.WriteHeader(http.StatusBadRequest)
+	id, err := httpx.PathID(r)
+	if err != nil {
+		httpx.Error(w, r, err)
 		return
 	}
 
 	if err := h.service.DeleteRelease(r.Context(), id); err != nil {
-		w.WriteHeader(http.StatusNotFound)
+		httpx.Error(w, r, err)
 		return
 	}
 
-	w.WriteHeader(http.StatusOK)
+	w.WriteHeader(http.StatusNoContent)
 }

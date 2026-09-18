@@ -3,7 +3,10 @@ package tracks
 import (
 	"context"
 	"database/sql"
+	"errors"
+	"fmt"
 
+	"github.com/As71er/once/internal/apperrors"
 	"github.com/As71er/once/internal/releases"
 	"github.com/As71er/once/internal/sqlc"
 )
@@ -40,7 +43,7 @@ func (sr *SqlcRepository) Create(ctx context.Context, track Track) (Track, error
 		AudioFileID: track.AudioFile.ID,
 	})
 	if err != nil {
-		return Track{}, err
+		return Track{}, fmt.Errorf("create track %w", errors.Join(apperrors.ErrCreation, err))
 	}
 
 	return Track{
@@ -52,7 +55,7 @@ func (sr *SqlcRepository) Create(ctx context.Context, track Track) (Track, error
 		Composer: track.Composer,
 		Lyrics:   track.Lyrics,
 		Release: releases.Release{
-			ID: track.ID,
+			ID: track.Release.ID,
 		},
 		AudioFile: AudioFile{
 			ID: trackDb.AudioFileID,
@@ -63,7 +66,10 @@ func (sr *SqlcRepository) Create(ctx context.Context, track Track) (Track, error
 func (sr *SqlcRepository) GetById(ctx context.Context, id int64) (Track, error) {
 	track, err := sr.db.GetTrackById(ctx, id)
 	if err != nil {
-		return Track{}, err
+		if errors.Is(err, sql.ErrNoRows) {
+			return Track{}, fmt.Errorf("get track with id %d: %w", id, errors.Join(apperrors.ErrNotFound, err))
+		}
+		return Track{}, fmt.Errorf("get track with id %d: %w", id, err)
 	}
 
 	return Track{
@@ -86,7 +92,7 @@ func (sr *SqlcRepository) GetById(ctx context.Context, id int64) (Track, error) 
 
 func (sr *SqlcRepository) Delete(ctx context.Context, id int64) error {
 	if err := sr.db.DeleteTrack(ctx, id); err != nil {
-		return err
+		return fmt.Errorf("delete track with id %d: %w", id, errors.Join(apperrors.ErrDeletion, err))
 	}
 
 	return nil
@@ -94,7 +100,7 @@ func (sr *SqlcRepository) Delete(ctx context.Context, id int64) error {
 
 func (sr *SqlcRepository) DeleteAudioFile(ctx context.Context, id int64) error {
 	if err := sr.db.DeleteAudioFile(ctx, id); err != nil {
-		return err
+		return fmt.Errorf("delete audio file with id %d: %w", id, errors.Join(apperrors.ErrDeletion, err))
 	}
 
 	return nil
@@ -111,7 +117,7 @@ func (sr *SqlcRepository) CreateAudioFile(ctx context.Context, audio_file AudioF
 		Size:       audio_file.Size,
 	})
 	if err != nil {
-		return AudioFile{}, err
+		return AudioFile{}, fmt.Errorf("create audio file: %w", errors.Join(apperrors.ErrCreation, err))
 	}
 
 	return AudioFile{
@@ -129,7 +135,10 @@ func (sr *SqlcRepository) CreateAudioFile(ctx context.Context, audio_file AudioF
 func (sr *SqlcRepository) GetAudioFile(ctx context.Context, id int64) (AudioFile, error) {
 	audio_file, err := sr.db.GetAudioFileById(ctx, id)
 	if err != nil {
-		return AudioFile{}, err
+		if errors.Is(err, sql.ErrNoRows) {
+			return AudioFile{}, fmt.Errorf("get audio file with id %d: %w", id, errors.Join(apperrors.ErrNotFound, err))
+		}
+		return AudioFile{}, fmt.Errorf("get audio file with id %d: %w", id, err)
 	}
 
 	return AudioFile{
@@ -147,7 +156,7 @@ func (sr *SqlcRepository) GetAudioFile(ctx context.Context, id int64) (AudioFile
 func (sr *SqlcRepository) ListTracksRelease(ctx context.Context, id int64) ([]Track, error) {
 	tracksDB, err := sr.db.ListTracksRelease(ctx, id)
 	if err != nil {
-		return []Track{}, err
+		return nil, fmt.Errorf("list tracks for release with id %d: %w", id, err)
 	}
 
 	var tracks []Track

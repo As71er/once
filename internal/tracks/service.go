@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/As71er/once/internal/apperrors"
 	"github.com/As71er/once/internal/metadata"
 	"github.com/As71er/once/internal/releases"
 	"github.com/As71er/once/internal/utils"
@@ -56,28 +58,40 @@ func (ts *TrackService) GetTrackById(ctx context.Context, id int) (*TrackSummary
 func (ts *TrackService) UploadTracks(ctx context.Context, req UploadTracksReq) (UploadTracksRes, error) {
 	var tracks []UploadedTrack
 
+	if len(req.Uploaded) == 0 {
+		return UploadTracksRes{}, fmt.Errorf("no files uploaded: %w", apperrors.ErrInvalidInput)
+	}
+
 	release, err := ts.releaseRepository.GetReleaseCover(ctx, req.ReleaseID)
 	if err != nil {
 		return UploadTracksRes{}, err
+	}
+
+	// Check cover index to extract option
+	if req.CoverIdx < 0 || req.CoverIdx >= len(req.Uploaded) {
+		return UploadTracksRes{}, fmt.Errorf("cover index %d out of range: %w", req.CoverIdx, apperrors.ErrInvalidInput)
 	}
 
 	dir := ts.fileManager.GetUploadDir(release.Name)
 	var sampleAudioFile AudioFile
 	for i, uploaded := range req.Uploaded {
 		fileExist, err := ts.fileManager.FileExists(uploaded.Name, dir)
+		if err != nil {
+			return UploadTracksRes{}, err
+		}
 		if fileExist {
 			continue
 		}
 
 		file, err := uploaded.Open()
 		if err != nil {
-			return UploadTracksRes{}, err
+			return UploadTracksRes{}, fmt.Errorf("open upload file: %w", errors.Join(apperrors.ErrInvalidInput, err))
 		}
 
 		path, err := ts.fileManager.WriteFile(file, uploaded.Name, dir)
 		if err != nil {
 			file.Close()
-			return UploadTracksRes{}, err
+			return UploadTracksRes{}, fmt.Errorf("write upload file: %w", err)
 		}
 
 		tags, err := metadata.Extract(path)
@@ -94,6 +108,9 @@ func (ts *TrackService) UploadTracks(ctx context.Context, req UploadTracksReq) (
 
 		if format != tags.Format.FormatName {
 			fileExist, err = ts.fileManager.FileExists(normalized, dir)
+			if err != nil {
+				return UploadTracksRes{}, err
+			}
 			if fileExist {
 				// Revert first write
 				if err := ts.fileManager.DeleteFile(path, dir); err != nil {
@@ -148,11 +165,6 @@ func (ts *TrackService) UploadTracks(ctx context.Context, req UploadTracksReq) (
 
 		tracks = append(tracks, track)
 
-		// Check cover index to extract option
-		if req.CoverIdx > len(req.Uploaded) {
-			req.CoverIdx = 0
-		}
-
 		if i == req.CoverIdx {
 			sampleAudioFile = createdAudioFile
 		}
@@ -178,7 +190,7 @@ func (ts *TrackService) UploadTracks(ctx context.Context, req UploadTracksReq) (
 			return UploadTracksRes{}, err
 		}
 		if err = metadata.ExtractCover(path, writer); err != nil {
-			return UploadTracksRes{}, err
+			return UploadTracksRes{}, fmt.Errorf("extract cover: %w", err)
 		}
 		writer.Close()
 
@@ -187,7 +199,7 @@ func (ts *TrackService) UploadTracks(ctx context.Context, req UploadTracksReq) (
 			return UploadTracksRes{}, err
 		}
 		if err = metadata.ExtractCoverThumbnail(path, writerThumb); err != nil {
-			return UploadTracksRes{}, err
+			return UploadTracksRes{}, fmt.Errorf("extract cover thumbnail: %w", err)
 		}
 		writerThumb.Close()
 	}
@@ -196,15 +208,9 @@ func (ts *TrackService) UploadTracks(ctx context.Context, req UploadTracksReq) (
 }
 
 func (ts *TrackService) ListTracksRelease(ctx context.Context, id int) (ListTracksRelease, error) {
-	var ErrReleaseNotFound = errors.New("release not found")
-
 	release, err := ts.releaseRepository.GetById(ctx, int64(id))
 	if err != nil {
 		return ListTracksRelease{}, err
-	}
-
-	if release == (releases.Release{}) {
-		return ListTracksRelease{}, ErrReleaseNotFound
 	}
 
 	tracks, err := ts.repository.ListTracksRelease(ctx, int64(id))
@@ -246,9 +252,11 @@ func (ts *TrackService) GetTrack(ctx context.Context, id int) (TrackDesc, error)
 	}
 
 	file, fileInfo, err := ts.fileManager.OpenFile(track.AudioFile.Name, track.Release.Name)
-
-	if file == nil || fileInfo == nil {
-		return TrackDesc{}, err
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return TrackDesc{}, fmt.Errorf("audio file for track %d: %w", id, apperrors.ErrNotFound)
+		}
+		return TrackDesc{}, fmt.Errorf("open audio file for track %d: %w", id, err)
 	}
 
 	return TrackDesc{
