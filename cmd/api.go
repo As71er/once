@@ -1,6 +1,7 @@
 package main
 
 import (
+	"database/sql"
 	"log"
 	"net/http"
 
@@ -8,14 +9,13 @@ import (
 	"github.com/As71er/once/internal/config"
 	"github.com/As71er/once/internal/httpx"
 	"github.com/As71er/once/internal/releases"
-	"github.com/As71er/once/internal/sqlc"
 	"github.com/As71er/once/internal/tracks"
 	"github.com/As71er/once/internal/utils"
 )
 
 type api struct {
 	cfg *config.Config
-	db  *sqlc.Queries
+	db  *sql.DB
 }
 
 func (app *api) mount() http.Handler {
@@ -54,7 +54,7 @@ func (app *api) mount() http.Handler {
 	v1.HandleFunc("GET /releases/{id}/tracks", trackHandler.ListTracksRelease)
 	v1.HandleFunc("POST /releases/{id}/tracks", trackHandler.UploadTracks) // Check service comment
 
-	v1.HandleFunc("GET /tracks/{id}", trackHandler.GetTrackById) // TODO: same as release getbyid
+	v1.HandleFunc("GET /tracks/{id}", trackHandler.GetTrackById)
 	v1.HandleFunc("GET /tracks/{id}/stream", trackHandler.GetTrack)
 	v1.HandleFunc("DELETE /tracks/{id}", trackHandler.DeleteTrack)
 

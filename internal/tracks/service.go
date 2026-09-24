@@ -6,17 +6,18 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
+	"sync"
 
 	"github.com/As71er/once/internal/apperrors"
 	"github.com/As71er/once/internal/metadata"
 	"github.com/As71er/once/internal/releases"
 	"github.com/As71er/once/internal/utils"
+	"github.com/As71er/once/internal/worker"
 )
 
 type Service interface {
 	GetTrackById(ctx context.Context, id int) (*TrackSummary, error)
-	UploadTracks(ctx context.Context, req UploadTracksReq) (UploadTracksRes, error)
+	UploadTracks(ctx context.Context, req UploadTracksReq) (IndexedTracksRes, error)
 	ListTracksRelease(ctx context.Context, id int) (ListTracksRelease, error)
 	GetTrack(ctx context.Context, id int) (TrackDesc, error)
 	DeleteTrack(ctx context.Context, id int) error
@@ -26,13 +27,14 @@ type TrackService struct {
 	repository        Repository
 	releaseRepository releases.Repository
 	fileManager       utils.FileManager
+	dbWrite           sync.Mutex
 }
 
 func NewService(repository Repository, releaseRepository releases.Repository, fileManager utils.FileManager) *TrackService {
 	return &TrackService{
-		repository,
-		releaseRepository,
-		fileManager,
+		repository:        repository,
+		releaseRepository: releaseRepository,
+		fileManager:       fileManager,
 	}
 }
 
@@ -55,154 +57,111 @@ func (ts *TrackService) GetTrackById(ctx context.Context, id int) (*TrackSummary
 }
 
 // TODO: refactor to a use case
-func (ts *TrackService) UploadTracks(ctx context.Context, req UploadTracksReq) (UploadTracksRes, error) {
-	var tracks []UploadedTrack
-
+func (ts *TrackService) UploadTracks(ctx context.Context, req UploadTracksReq) (IndexedTracksRes, error) {
 	if len(req.Uploaded) == 0 {
-		return UploadTracksRes{}, fmt.Errorf("no files uploaded: %w", apperrors.ErrInvalidInput)
+		return IndexedTracksRes{}, fmt.Errorf("no files uploaded: %w", apperrors.ErrInvalidInput)
 	}
 
 	release, err := ts.releaseRepository.GetReleaseCover(ctx, req.ReleaseID)
 	if err != nil {
-		return UploadTracksRes{}, err
+		return IndexedTracksRes{}, err
 	}
 
-	// Check cover index to extract option
 	if req.CoverIdx < 0 || req.CoverIdx >= len(req.Uploaded) {
-		return UploadTracksRes{}, fmt.Errorf("cover index %d out of range: %w", req.CoverIdx, apperrors.ErrInvalidInput)
+		return IndexedTracksRes{}, fmt.Errorf("cover index %d out of range: %w", req.CoverIdx, apperrors.ErrInvalidInput)
 	}
 
 	dir := ts.fileManager.GetUploadDir(release.Name)
-	var sampleAudioFile AudioFile
-	for i, uploaded := range req.Uploaded {
-		fileExist, err := ts.fileManager.FileExists(uploaded.Name, dir)
-		if err != nil {
-			return UploadTracksRes{}, err
-		}
-		if fileExist {
-			continue
-		}
 
-		file, err := uploaded.Open()
-		if err != nil {
-			return UploadTracksRes{}, fmt.Errorf("open upload file: %w", errors.Join(apperrors.ErrInvalidInput, err))
-		}
-
-		path, err := ts.fileManager.WriteFile(file, uploaded.Name, dir)
-		if err != nil {
-			file.Close()
-			return UploadTracksRes{}, fmt.Errorf("write upload file: %w", err)
-		}
-
-		tags, err := metadata.Extract(path)
-		if err != nil {
-			return UploadTracksRes{}, err
-		}
-
-		// Make sure the files is written with a correct format extension
-		ext := filepath.Ext(tags.Format.FileName)
-		_, format, _ := strings.Cut(ext, ".")
-
-		fileName := strings.TrimSuffix(uploaded.Name, ext)
-		normalized := fmt.Sprintf("%s.%s", fileName, tags.Format.FormatName)
-
-		if format != tags.Format.FormatName {
-			fileExist, err = ts.fileManager.FileExists(normalized, dir)
-			if err != nil {
-				return UploadTracksRes{}, err
-			}
-			if fileExist {
-				// Revert first write
-				if err := ts.fileManager.DeleteFile(path, dir); err != nil {
-					return UploadTracksRes{}, err
-				}
-				continue
-			}
-		}
-
-		_, err = ts.fileManager.RenameFile(uploaded.Name, normalized, dir)
-		if err != nil {
-			return UploadTracksRes{}, err
-		}
-
-		createdAudioFile, err := ts.repository.CreateAudioFile(ctx, AudioFile{
-			Name:       normalized,
-			Codec:      tags.Streams[0].CodecName,
-			BitRate:    int64(utils.ParseInt(tags.Format.BitRate, 0)),
-			BitDepth:   int64(utils.ParseInt(tags.Streams[0].BitDepth, 0)),
-			Channels:   int64(tags.Streams[0].Channels),
-			SampleRate: int64(utils.ParseInt(tags.Streams[0].SampleRate, 0)),
-			Size:       int64(utils.ParseInt(tags.Format.FileSize, 0)),
-		})
-		if err != nil {
-			return UploadTracksRes{}, err
-		}
-
-		createdTrack, err := ts.repository.Create(ctx, Track{
-			Title:     tags.Title,
-			Duration:  utils.ParseFloat(tags.Streams[0].Duration, 0),
-			Track:     int64(tags.TrackNumber),
-			Disc:      int64(tags.DiscNumber),
-			Composer:  tags.Composer,
-			Lyrics:    tags.Lyrics,
-			Release:   releases.Release{ID: release.ID},
-			AudioFile: AudioFile{ID: createdAudioFile.ID},
-		})
-		if err != nil {
-			return UploadTracksRes{}, err
-		}
-
-		track := UploadedTrack{
-			ID:        createdTrack.ID,
-			Title:     createdTrack.Title,
-			Duration:  createdTrack.Duration,
-			Track:     createdTrack.Track,
-			Disc:      createdTrack.Disc,
-			Composer:  createdTrack.Composer,
-			ReleaseID: release.ID,
-			AudioFile: createdAudioFile,
-		}
-
-		tracks = append(tracks, track)
-
-		if i == req.CoverIdx {
-			sampleAudioFile = createdAudioFile
-		}
+	// From interface
+	process := func(ctx context.Context, file UploadTrack) (FileOut, error) {
+		return ts.ProcessUploadedFile(ctx, dir, release.ID, file)
 	}
 
-	// Check extract cover option
-	res := UploadTracksRes{Tracks: tracks, Count: len(tracks)}
-	if !req.ExtractCover {
+	inputs := make([]Input, 0, len(req.Uploaded))
+	for _, up := range req.Uploaded {
+		inputs = append(inputs, Input{
+			dir:       dir,
+			releaseID: release.ID,
+			file:      up,
+		})
+	}
+
+	var workers = 2
+	if len(req.Uploaded) >= 10 {
+		workers = 4
+	}
+
+	results := worker.Run(ctx, workers, req.Uploaded, process)
+
+	report := IndexedTracks{}
+	var sampleAudioFile AudioFile
+
+	for i, res := range results {
+		name := inputs[i].file.Name
+
+		switch {
+		case res.Err != nil:
+			report.Failed = append(report.Failed, IgnoredIndexedTrack{
+				File:   name,
+				Reason: res.Err.Error(),
+			})
+		case res.Value.FileStatus == FileSkipped:
+			report.Skipped = append(report.Skipped, IgnoredIndexedTrack{
+				File:   name,
+				Reason: "already exists",
+			})
+		case res.Value.FileStatus == FileIndexed:
+			report.Indexed = append(report.Indexed, res.Value.Track)
+			if i == req.CoverIdx {
+				sampleAudioFile = res.Value.Track.AudioFile
+			}
+		default:
+			return IndexedTracksRes{}, fmt.Errorf("no results recorded")
+		}
+	}
+	res := IndexedTracksRes{Tracks: report}
+
+	if !req.ExtractCover || sampleAudioFile.Name == "" {
 		return res, nil
 	}
 
-	// Arbitrary main thumbnail
-	coverExist, err := ts.fileManager.FileExists(fmt.Sprintf("%s.png", release.Cover.Name), release.Name)
+	coverName := fmt.Sprintf("%s.png", release.Cover.Name)
+	coverExist, err := ts.fileManager.FileExists(coverName, release.Name)
 	if err != nil {
-		return UploadTracksRes{}, err
+		return res, err
 	}
 
-	if !coverExist {
-		path := filepath.Join(dir, sampleAudioFile.Name)
+	if coverExist {
+		return res, nil
+	}
 
-		writer, _, err := ts.fileManager.GetFileWriter(fmt.Sprintf("%s.png", release.Cover.Name), release.Name)
-		if err != nil {
-			return UploadTracksRes{}, err
-		}
-		if err = metadata.ExtractCover(path, writer); err != nil {
-			return UploadTracksRes{}, fmt.Errorf("extract cover: %w", err)
-		}
+	path := filepath.Join(dir, sampleAudioFile.Name)
+
+	writer, _, err := ts.fileManager.GetFileWriter(coverName, release.Name)
+	if err != nil {
+		return res, err
+	}
+	if err = metadata.ExtractCover(path, writer); err != nil {
 		writer.Close()
 
-		writerThumb, _, err := ts.fileManager.GetFileWriter(fmt.Sprintf("%s.jpg", release.Cover.ThumbName), release.Name)
-		if err != nil {
-			return UploadTracksRes{}, err
-		}
-		if err = metadata.ExtractCoverThumbnail(path, writerThumb); err != nil {
-			return UploadTracksRes{}, fmt.Errorf("extract cover thumbnail: %w", err)
-		}
-		writerThumb.Close()
+		res.Warnings = append(res.Warnings, fmt.Sprintf("cover extraction failed: %v", err))
+		return res, nil
 	}
+	writer.Close()
+
+	writerThumb, _, err := ts.fileManager.GetFileWriter(
+		fmt.Sprintf("%s.jpg", release.Cover.ThumbName), release.Name)
+	if err != nil {
+		return res, err
+	}
+	if err = metadata.ExtractCoverThumbnail(path, writerThumb); err != nil {
+		writerThumb.Close()
+		res.Warnings = append(res.Warnings, fmt.Sprintf("cover extraction thumbnail failed: %v", err))
+
+		return res, nil
+	}
+	writerThumb.Close()
 
 	return res, nil
 }

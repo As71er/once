@@ -70,7 +70,6 @@ func (h *handler) UploadTracks(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, r, err)
 		return
 	}
-
 	if err := r.ParseMultipartForm(h.limits.MaxUploadMemoryMiB << 20); err != nil {
 		httpx.Error(w, r, err)
 		return

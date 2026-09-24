@@ -7,7 +7,6 @@ import (
 
 	migrations "github.com/As71er/once/data"
 	"github.com/As71er/once/internal/config"
-	"github.com/As71er/once/internal/sqlc"
 	"github.com/pressly/goose/v3"
 	_ "modernc.org/sqlite"
 )
@@ -35,9 +34,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	querier := sqlc.New(conn)
-
-	api := api{cfg: cfg, db: querier}
+	api := api{cfg: cfg, db: conn}
 
 	if err := api.run(api.mount()); err != nil {
 		slog.Error("server failed", "error", err)

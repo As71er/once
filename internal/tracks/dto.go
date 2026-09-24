@@ -18,12 +18,18 @@ type UploadTrack struct {
 	Open func() (io.ReadCloser, error)
 }
 
-type UploadTracksRes struct {
-	Tracks []UploadedTrack `json:"data"`
-	Count  int             `json:"count"`
+type IndexedTracksRes struct {
+	Tracks   IndexedTracks `json:"data"`
+	Warnings []string      `json:"warnings,omitempty"`
 }
 
-type UploadedTrack struct {
+type IndexedTracks struct {
+	Indexed []IndexedTrack        `json:"indexed"`
+	Failed  []IgnoredIndexedTrack `json:"failed"`
+	Skipped []IgnoredIndexedTrack `json:"skipped"`
+}
+
+type IndexedTrack struct {
 	ID        int64     `json:"id"`
 	Title     string    `json:"title"`
 	Duration  float64   `json:"duration"`
@@ -32,6 +38,11 @@ type UploadedTrack struct {
 	Composer  string    `json:"composer"`
 	ReleaseID int64     `json:"release_id"`
 	AudioFile AudioFile `json:"audio_file"`
+}
+
+type IgnoredIndexedTrack struct {
+	File   string `json:"file"`
+	Reason string `json:"reason"`
 }
 
 type TrackSummary struct {

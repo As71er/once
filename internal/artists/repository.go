@@ -2,6 +2,7 @@ package artists
 
 import (
 	"context"
+	"database/sql"
 
 	"github.com/As71er/once/internal/sqlc"
 )
@@ -11,23 +12,25 @@ type Repository interface {
 }
 
 type SqlcRepository struct {
-	db *sqlc.Queries
+	db *sql.DB
+	q  *sqlc.Queries
 }
 
-func NewRepository(db *sqlc.Queries) *SqlcRepository {
+func NewRepository(db *sql.DB) *SqlcRepository {
 	return &SqlcRepository{
 		db: db,
+		q:  sqlc.New(db),
 	}
 }
 
 func (sr *SqlcRepository) CreateArtist(ctx context.Context, name string) (Artist, error) {
-	artistDb, err := sr.db.CreateArtist(ctx, name)
+	artist, err := sr.q.CreateArtist(ctx, name)
 	if err != nil {
 		return Artist{}, err
 	}
 
 	return Artist{
-		ID:   artistDb.ID,
-		Name: artistDb.Name,
+		ID:   artist.ID,
+		Name: artist.Name,
 	}, nil
 }

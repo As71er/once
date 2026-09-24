@@ -14,11 +14,12 @@ type FileManager interface {
 	CreateDir(name string) (string, error)
 	DeleteDirRecursive(path string) error
 	DeleteFile(name, dir string) error
-	WriteFile(file io.ReadCloser, name, dir string) (string, error)
+	WriteFile(file io.Reader, name, dir string) (string, error)
 	FileExists(name, dir string) (bool, error)
 	GetUploadDir(name string) string
 	GetFileWriter(name, dir string) (io.WriteCloser, string, error)
 	OpenFile(name, dir string) (*os.File, os.FileInfo, error)
+	CopyFile(dst io.Writer, src io.Reader) (int64, error)
 	RenameFile(oldName, newName, dir string) (string, error)
 }
 
@@ -66,7 +67,7 @@ func (la *LocalArchive) DeleteFile(name, dir string) error {
 	return nil
 }
 
-func (la *LocalArchive) WriteFile(file io.ReadCloser, name, dir string) (string, error) {
+func (la *LocalArchive) WriteFile(file io.Reader, name, dir string) (string, error) {
 	path := filepath.Join(dir, filepath.Base(name))
 
 	dest, err := os.Create(path)
@@ -92,10 +93,6 @@ func (la *LocalArchive) WriteFile(file io.ReadCloser, name, dir string) (string,
 func (la *LocalArchive) GetFileWriter(name, dir string) (io.WriteCloser, string, error) {
 	uploadDir := filepath.Join(la.UploadDir, filepath.Base(dir))
 
-	if err := os.MkdirAll(uploadDir, 0o755); err != nil {
-		return nil, "", fmt.Errorf("create upload dir %q: %w", uploadDir, errors.Join(ErrFile, err))
-	}
-
 	path := filepath.Join(uploadDir, filepath.Base(name))
 
 	file, err := os.Create(path)
@@ -104,6 +101,15 @@ func (la *LocalArchive) GetFileWriter(name, dir string) (io.WriteCloser, string,
 	}
 
 	return file, path, nil
+}
+
+func (la *LocalArchive) CopyFile(dst io.Writer, src io.Reader) (int64, error) {
+	written, err := io.Copy(dst, src)
+	if err != nil {
+		return 0, fmt.Errorf("copy data: %w", ErrFile)
+	}
+
+	return written, nil
 }
 
 func (la *LocalArchive) FileExists(name, dir string) (bool, error) {
