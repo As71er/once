@@ -7,29 +7,26 @@ import (
 	"os"
 
 	"github.com/As71er/once/internal/apperrors"
-	"github.com/As71er/once/internal/artists"
 	"github.com/As71er/once/internal/utils"
 )
 
 type Service interface {
-	CreateRelease(ctx context.Context, release CreateReleaseReq) (*CreatedReleaseRes, error)
-	GetReleaseById(ctx context.Context, id int) (*ReleaseRes, error)
-	GetCover(ctx context.Context, id int) (*CoverArtDesc, error)
-	GetCoverThumb(ctx context.Context, id int) (*CoverArtDesc, error)
+	CreateRelease(context.Context, CreateReleaseReq) (*CreatedReleaseRes, error)
+	GetReleaseById(context.Context, int) (*ReleaseRes, error)
+	GetCover(context.Context, int) (*CoverArtDesc, error)
+	GetCoverThumb(context.Context, int) (*CoverArtDesc, error)
 	ListReleases(ctx context.Context, limit, offset int) (ReleaseListRes, error)
-	DeleteRelease(ctx context.Context, id int) error
+	DeleteRelease(context.Context, int) error
 }
 
 type ReleaseService struct {
-	repository       Repository
-	artistRepository artists.Repository
-	fileManager      utils.FileManager
+	repository  Repository
+	fileManager utils.FileManager
 }
 
-func NewService(repository Repository, artistRepository artists.Repository, fileManager utils.FileManager) *ReleaseService {
+func NewService(repository Repository, fileManager utils.FileManager) *ReleaseService {
 	return &ReleaseService{
 		repository,
-		artistRepository,
 		fileManager,
 	}
 }
@@ -104,6 +101,7 @@ func (s *ReleaseService) GetReleaseById(ctx context.Context, id int) (*ReleaseRe
 		TotalTracks: release.TotalTracks,
 		TotalDiscs:  release.TotalDiscs,
 		CoverID:     *release.Cover.ID,
+		Artists:     release.Artists,
 	}, nil
 }
 

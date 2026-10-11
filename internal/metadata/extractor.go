@@ -31,6 +31,9 @@ func Extract(path string) (*Tags, error) {
 		rawTags[strings.ToLower(k)] = strings.TrimSpace(v)
 	}
 
+	artists := strings.Split(rawTags["artist"], ",")
+	albumArtists := strings.Split(rawTags["album_artist"], ",")
+
 	value, _ := findTag(rawTags, "track", "trck", "tracknumber")
 	before, _, _ := strings.Cut(value, "/")
 	trackNumber := utils.ParseInt(before, 0)
@@ -44,9 +47,9 @@ func Extract(path string) (*Tags, error) {
 
 	tags := Tags{
 		Title:       rawTags["title"],
-		Artist:      rawTags["artist"],
+		Artist:      artists,
 		Album:       rawTags["album"],
-		AlbumArtist: rawTags["album_artist"],
+		AlbumArtist: albumArtists,
 		Composer:    rawTags["composer"],
 		Genre:       rawTags["genre"],
 		Date:        rawTags["date"],

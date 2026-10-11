@@ -11,15 +11,15 @@ import (
 
 type Querier interface {
 	//-----------------------------------------------------------------------
-	AddArtistRelease(ctx context.Context, arg AddArtistReleaseParams) error
+	AddReleaseArtist(ctx context.Context, arg AddReleaseArtistParams) (ReleaseArtist, error)
 	//-----------------------------------------------------------------------
-	AddArtistTrack(ctx context.Context, arg AddArtistTrackParams) error
+	AddTrackArtist(ctx context.Context, arg AddTrackArtistParams) (TrackArtist, error)
 	CreateArtist(ctx context.Context, name string) (Artist, error)
 	CreateAudioFile(ctx context.Context, arg CreateAudioFileParams) (AudioFile, error)
 	CreateCover(ctx context.Context, arg CreateCoverParams) (Cover, error)
 	CreateRelease(ctx context.Context, arg CreateReleaseParams) (Release, error)
 	CreateTrack(ctx context.Context, arg CreateTrackParams) (Track, error)
-	DeleteArtist(ctx context.Context, id int64) error
+	DeleteArtist(ctx context.Context, id int64) (int64, error)
 	DeleteAudioFile(ctx context.Context, id int64) error
 	DeleteCover(ctx context.Context, id int64) error
 	DeleteRelease(ctx context.Context, id int64) error
@@ -28,24 +28,26 @@ type Querier interface {
 	GetArtistByName(ctx context.Context, name string) (Artist, error)
 	GetAudioFileById(ctx context.Context, id int64) (AudioFile, error)
 	GetCoverById(ctx context.Context, id int64) (Cover, error)
-	GetReleaseArtists(ctx context.Context, releaseID int64) ([]Artist, error)
-	GetReleaseById(ctx context.Context, id int64) (Release, error)
+	GetReleaseArtistsByReleaseId(ctx context.Context, releaseID int64) ([]GetReleaseArtistsByReleaseIdRow, error)
+	GetReleaseById(ctx context.Context, id int64) (GetReleaseByIdRow, error)
 	GetReleaseCover(ctx context.Context, id int64) (GetReleaseCoverRow, error)
-	GetReleaseDuration(ctx context.Context, releaseID int64) (sql.NullFloat64, error)
-	GetTrackArtists(ctx context.Context, trackID int64) ([]GetTrackArtistsRow, error)
+	GetTrackArtistsByName(ctx context.Context, name string) (GetTrackArtistsByNameRow, error)
+	GetTrackArtistsByTrackId(ctx context.Context, trackID int64) ([]GetTrackArtistsByTrackIdRow, error)
 	GetTrackById(ctx context.Context, id int64) (GetTrackByIdRow, error)
-	GetTracksByArtist(ctx context.Context, artistID int64) ([]GetTracksByArtistRow, error)
-	ListArtists(ctx context.Context) ([]Artist, error)
+	GetTracksByArtistId(ctx context.Context, artistID int64) ([]GetTracksByArtistIdRow, error)
+	ListArtists(ctx context.Context, arg ListArtistsParams) ([]Artist, error)
 	ListCovers(ctx context.Context, arg ListCoversParams) ([]Cover, error)
 	ListReleases(ctx context.Context, arg ListReleasesParams) ([]ListReleasesRow, error)
+	ListTracksArtistsByRelease(ctx context.Context, id int64) ([]ListTracksArtistsByReleaseRow, error)
+	ListTracksByRelease(ctx context.Context, releaseID int64) ([]ListTracksByReleaseRow, error)
 	ListTracksRelease(ctx context.Context, releaseID int64) ([]ListTracksReleaseRow, error)
-	RemoveReleaseArtist(ctx context.Context, arg RemoveReleaseArtistParams) error
-	RemoveTrackArtist(ctx context.Context, arg RemoveTrackArtistParams) error
-	UpdateArtist(ctx context.Context, arg UpdateArtistParams) error
+	RemoveReleaseArtist(ctx context.Context, arg RemoveReleaseArtistParams) (int64, error)
+	RemoveTrackArtist(ctx context.Context, arg RemoveTrackArtistParams) (int64, error)
+	UpdateArtist(ctx context.Context, arg UpdateArtistParams) (Artist, error)
 	UpdateRelease(ctx context.Context, arg UpdateReleaseParams) (Release, error)
 	UpdateReleaseCover(ctx context.Context, arg UpdateReleaseCoverParams) error
 	UpdateTrack(ctx context.Context, arg UpdateTrackParams) (Track, error)
-	UpdateTrackArtistRole(ctx context.Context, arg UpdateTrackArtistRoleParams) error
+	UpdateTrackArtistRole(ctx context.Context, arg UpdateTrackArtistRoleParams) (sql.Result, error)
 }
 
 var _ Querier = (*Queries)(nil)

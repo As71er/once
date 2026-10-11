@@ -17,9 +17,9 @@ type Stream struct {
 
 type Tags struct {
 	Title       string            `json:"title"`
-	Artist      string            `json:"artist"`
+	Artist      []string          `json:"artist"`
 	Album       string            `json:"album"`
-	AlbumArtist string            `json:"album_artist"`
+	AlbumArtist []string          `json:"album_artist"`
 	Composer    string            `json:"composer"`
 	Genre       string            `json:"genre"`
 	Date        string            `json:"date"`

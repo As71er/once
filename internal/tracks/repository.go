@@ -9,17 +9,18 @@ import (
 	"github.com/As71er/once/internal/apperrors"
 	"github.com/As71er/once/internal/releases"
 	"github.com/As71er/once/internal/sqlc"
+	"github.com/As71er/once/internal/trackartists"
 )
 
 type Repository interface {
 	//Create(ctx context.Context, track Track) (Track, error)
-	GetById(ctx context.Context, id int64) (Track, error)
-	Delete(ctx context.Context, id int64) error
-	DeleteAudioFile(ctx context.Context, id int64) error
+	GetById(context.Context, int64) (Track, error)
+	Delete(context.Context, int64) error
+	DeleteAudioFile(context.Context, int64) error
 	//CreateAudioFile(ctx context.Context, audioFile AudioFile) (AudioFile, error)
-	GetAudioFile(ctx context.Context, id int64) (AudioFile, error)
-	ListTracksRelease(ctx context.Context, id int64) ([]Track, error)
-	InsertTrack(ctx context.Context, track Track, audioFile AudioFile) (Track, error)
+	GetAudioFile(context.Context, int64) (AudioFile, error)
+	ListTracksRelease(context.Context, int64) ([]Track, error)
+	InsertTrack(context.Context, Track, AudioFile) (Track, error)
 }
 
 type SqlcRepository struct {
@@ -69,6 +70,21 @@ func (sr *SqlcRepository) GetById(ctx context.Context, id int64) (Track, error) 
 		return Track{}, fmt.Errorf("get track with id %d: %w", id, err)
 	}
 
+	foundTrackArtists, err := sr.q.GetTrackArtistsByTrackId(ctx, track.ID)
+	if err != nil {
+		return Track{}, fmt.Errorf("get track artists with id %d: %w", id, err)
+	}
+
+	var trackArtists []TrackArtistRef
+	for _, artist := range foundTrackArtists {
+
+		trackArtists = append(trackArtists, TrackArtistRef{
+			ID:   artist.ID,
+			Name: artist.Name,
+			Role: trackartists.ArtistRoles(artist.Role),
+		})
+	}
+
 	return Track{
 		ID:       track.ID,
 		Title:    track.Title,
@@ -84,6 +100,7 @@ func (sr *SqlcRepository) GetById(ctx context.Context, id int64) (Track, error) 
 			ID:   track.ID,
 			Name: track.AudioFileName,
 		},
+		TrackArtist: trackArtists,
 	}, nil
 }
 
@@ -153,13 +170,29 @@ func (sr *SqlcRepository) GetAudioFile(ctx context.Context, id int64) (AudioFile
 }
 
 func (sr *SqlcRepository) ListTracksRelease(ctx context.Context, id int64) ([]Track, error) {
-	tracksDB, err := sr.q.ListTracksRelease(ctx, id)
+	foundTracks, err := sr.q.ListTracksRelease(ctx, id)
 	if err != nil {
 		return nil, fmt.Errorf("list tracks for release with id %d: %w", id, err)
 	}
 
+	foundArtists, err := sr.q.ListTracksArtistsByRelease(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("list tracks artists for release with id %d: %w", id, err)
+	}
+
+	tracksArtists := make(map[int64][]TrackArtistRef)
+	for _, artist := range foundArtists {
+		tracksArtists[artist.TrackID] = append(tracksArtists[artist.TrackID], TrackArtistRef{
+			ID:   artist.ArtistID,
+			Name: artist.ArtistName,
+			Role: trackartists.ArtistRoles(artist.Role),
+		})
+	}
+
 	var tracks []Track
-	for _, track := range tracksDB {
+	for _, track := range foundTracks {
+		artist := tracksArtists[track.ID]
+
 		tracks = append(tracks, Track{
 			ID:       track.ID,
 			Title:    track.Title,
@@ -173,6 +206,7 @@ func (sr *SqlcRepository) ListTracksRelease(ctx context.Context, id int64) ([]Tr
 			AudioFile: AudioFile{
 				ID: track.ID,
 			},
+			TrackArtist: artist,
 		})
 	}
 

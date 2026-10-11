@@ -11,15 +11,14 @@ import (
 )
 
 type Repository interface {
-	Create(ctx context.Context, release Release) (Release, error)
-	GetById(ctx context.Context, id int64) (Release, error)
-	Delete(ctx context.Context, id int64) error
+	Create(context.Context, Release) (Release, error)
+	GetById(context.Context, int64) (Release, error)
+	Delete(context.Context, int64) error
 	List(ctx context.Context, limit, offset int64) ([]Release, error)
-	GetDuration(ctx context.Context, id int64) (float64, error)
-	CreateCover(ctx context.Context, cover Cover) (Cover, error)
-	GetCoverById(ctx context.Context, id int64) (Cover, error)
-	GetReleaseCover(ctx context.Context, id int64) (Release, error)
-	UpdateReleaseCover(ctx context.Context, releaseID, coverID int64) error
+	CreateCover(context.Context, Cover) (Cover, error)
+	GetCoverById(context.Context, int64) (Cover, error)
+	GetReleaseCover(context.Context, int64) (Release, error)
+	UpdateReleaseCover(context.Context, int64, int64) error
 }
 
 type SqlcRepository struct {
@@ -29,8 +28,8 @@ type SqlcRepository struct {
 
 func NewRepository(db *sql.DB) *SqlcRepository {
 	return &SqlcRepository{
-		db: db,
-		q:  sqlc.New(db),
+		db,
+		sqlc.New(db),
 	}
 }
 
@@ -76,17 +75,32 @@ func (sr *SqlcRepository) GetById(ctx context.Context, id int64) (Release, error
 		return Release{}, fmt.Errorf("get release with id %d: %w", id, err)
 	}
 
+	foundArtists, err := sr.q.GetReleaseArtistsByReleaseId(ctx, id)
+	if err != nil {
+		return Release{}, fmt.Errorf("get release artists with id %d: %w", id, err)
+	}
+
+	var releaseArtists []ReleaseArtistRef
+	for _, artist := range foundArtists {
+		releaseArtists = append(releaseArtists, ReleaseArtistRef{
+			ID:   artist.ArtistID,
+			Name: artist.Name,
+		})
+	}
+
 	return Release{
-		ID:          releaseDB.ID,
-		Title:       releaseDB.Title,
-		Name:        releaseDB.Name,
-		ReleaseType: releaseDB.ReleaseType,
-		Date:        releaseDB.Date.String,
-		TotalTracks: uint(releaseDB.TotalTracks),
-		TotalDiscs:  uint(releaseDB.TotalDiscs),
+		ID:            releaseDB.ID,
+		Title:         releaseDB.Title,
+		Name:          releaseDB.Name,
+		ReleaseType:   releaseDB.ReleaseType,
+		Date:          releaseDB.Date.String,
+		TotalTracks:   uint(releaseDB.TotalTracks),
+		TotalDiscs:    uint(releaseDB.TotalDiscs),
+		TotalDuration: uint(releaseDB.TotalDuration.Float64),
 		Cover: &Cover{
 			ID: &releaseDB.CoverID.Int64,
 		},
+		Artists: releaseArtists,
 	}, nil
 }
 
@@ -111,12 +125,13 @@ func (sr *SqlcRepository) List(ctx context.Context, limit, offset int64) ([]Rele
 	var releases []Release
 	for _, release := range releasesDB {
 		releases = append(releases, Release{
-			ID:          release.ID,
-			Title:       release.Title,
-			ReleaseType: release.ReleaseType,
-			Date:        release.Date.String,
-			TotalTracks: uint(release.TotalTracks),
-			TotalDiscs:  uint(release.TotalDiscs),
+			ID:            release.ID,
+			Title:         release.Title,
+			ReleaseType:   release.ReleaseType,
+			Date:          release.Date.String,
+			TotalTracks:   uint(release.TotalTracks),
+			TotalDiscs:    uint(release.TotalDiscs),
+			TotalDuration: uint(release.TotalDuration.Float64),
 			Cover: &Cover{
 				ID: &release.CoverID.Int64,
 			},
@@ -124,15 +139,6 @@ func (sr *SqlcRepository) List(ctx context.Context, limit, offset int64) ([]Rele
 	}
 
 	return releases, nil
-}
-
-func (sr *SqlcRepository) GetDuration(ctx context.Context, id int64) (float64, error) {
-	duration, err := sr.q.GetReleaseDuration(ctx, id)
-	if err != nil {
-		return 0, fmt.Errorf("get total duration for release with id %d: %w", id, err)
-	}
-
-	return duration.Float64, nil
 }
 
 func (sr *SqlcRepository) CreateCover(ctx context.Context, cover Cover) (Cover, error) {

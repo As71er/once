@@ -62,13 +62,28 @@ func (q *Queries) DeleteRelease(ctx context.Context, id int64) error {
 }
 
 const getReleaseById = `-- name: GetReleaseById :one
-SELECT id, title, name, release_type, date, total_tracks, total_discs, cover_id FROM releases
-WHERE id = ?
+SELECT r.id, r.title, r.name, r.release_type, r.date, r.total_tracks, r.total_discs, r.cover_id, SUM(t.duration) AS total_duration
+FROM releases AS r
+LEFT JOIN tracks AS t ON r.id = t.release_id
+WHERE r.id = ?
+GROUP BY r.id
 `
 
-func (q *Queries) GetReleaseById(ctx context.Context, id int64) (Release, error) {
+type GetReleaseByIdRow struct {
+	ID            int64           `json:"id"`
+	Title         string          `json:"title"`
+	Name          string          `json:"name"`
+	ReleaseType   string          `json:"release_type"`
+	Date          sql.NullString  `json:"date"`
+	TotalTracks   int64           `json:"total_tracks"`
+	TotalDiscs    int64           `json:"total_discs"`
+	CoverID       sql.NullInt64   `json:"cover_id"`
+	TotalDuration sql.NullFloat64 `json:"total_duration"`
+}
+
+func (q *Queries) GetReleaseById(ctx context.Context, id int64) (GetReleaseByIdRow, error) {
 	row := q.db.QueryRowContext(ctx, getReleaseById, id)
-	var i Release
+	var i GetReleaseByIdRow
 	err := row.Scan(
 		&i.ID,
 		&i.Title,
@@ -78,6 +93,7 @@ func (q *Queries) GetReleaseById(ctx context.Context, id int64) (Release, error)
 		&i.TotalTracks,
 		&i.TotalDiscs,
 		&i.CoverID,
+		&i.TotalDuration,
 	)
 	return i, err
 }
@@ -109,22 +125,12 @@ func (q *Queries) GetReleaseCover(ctx context.Context, id int64) (GetReleaseCove
 	return i, err
 }
 
-const getReleaseDuration = `-- name: GetReleaseDuration :one
-SELECT SUM(duration) AS total_duration
-FROM tracks
-WHERE release_id = ?
-`
-
-func (q *Queries) GetReleaseDuration(ctx context.Context, releaseID int64) (sql.NullFloat64, error) {
-	row := q.db.QueryRowContext(ctx, getReleaseDuration, releaseID)
-	var total_duration sql.NullFloat64
-	err := row.Scan(&total_duration)
-	return total_duration, err
-}
-
 const listReleases = `-- name: ListReleases :many
-SELECT id, title, release_type, date, total_tracks, total_discs, cover_id
-FROM releases
+SELECT r.id, r.title, r.release_type, r.date, r.total_tracks, r.total_discs, r.cover_id, SUM(t.duration) AS total_duration
+FROM releases AS r
+LEFT JOIN tracks AS t ON r.id = t.release_id
+GROUP BY r.id
+ORDER BY r.id
 LIMIT ? OFFSET ?
 `
 
@@ -134,13 +140,14 @@ type ListReleasesParams struct {
 }
 
 type ListReleasesRow struct {
-	ID          int64          `json:"id"`
-	Title       string         `json:"title"`
-	ReleaseType string         `json:"release_type"`
-	Date        sql.NullString `json:"date"`
-	TotalTracks int64          `json:"total_tracks"`
-	TotalDiscs  int64          `json:"total_discs"`
-	CoverID     sql.NullInt64  `json:"cover_id"`
+	ID            int64           `json:"id"`
+	Title         string          `json:"title"`
+	ReleaseType   string          `json:"release_type"`
+	Date          sql.NullString  `json:"date"`
+	TotalTracks   int64           `json:"total_tracks"`
+	TotalDiscs    int64           `json:"total_discs"`
+	CoverID       sql.NullInt64   `json:"cover_id"`
+	TotalDuration sql.NullFloat64 `json:"total_duration"`
 }
 
 func (q *Queries) ListReleases(ctx context.Context, arg ListReleasesParams) ([]ListReleasesRow, error) {
@@ -160,6 +167,54 @@ func (q *Queries) ListReleases(ctx context.Context, arg ListReleasesParams) ([]L
 			&i.TotalTracks,
 			&i.TotalDiscs,
 			&i.CoverID,
+			&i.TotalDuration,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listTracksByRelease = `-- name: ListTracksByRelease :many
+SELECT t.id, t.title, t.duration, t.track, t.disc, t.composer, t.audio_file_id
+FROM tracks AS t
+WHERE t.release_id = ?
+`
+
+type ListTracksByReleaseRow struct {
+	ID          int64          `json:"id"`
+	Title       string         `json:"title"`
+	Duration    float64        `json:"duration"`
+	Track       int64          `json:"track"`
+	Disc        int64          `json:"disc"`
+	Composer    sql.NullString `json:"composer"`
+	AudioFileID int64          `json:"audio_file_id"`
+}
+
+func (q *Queries) ListTracksByRelease(ctx context.Context, releaseID int64) ([]ListTracksByReleaseRow, error) {
+	rows, err := q.db.QueryContext(ctx, listTracksByRelease, releaseID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListTracksByReleaseRow
+	for rows.Next() {
+		var i ListTracksByReleaseRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Title,
+			&i.Duration,
+			&i.Track,
+			&i.Disc,
+			&i.Composer,
+			&i.AudioFileID,
 		); err != nil {
 			return nil, err
 		}

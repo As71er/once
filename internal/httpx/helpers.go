@@ -15,8 +15,8 @@ func JSON(w http.ResponseWriter, status int, v any) {
 	json.NewEncoder(w).Encode(v)
 }
 
-func PathID(r *http.Request) (int, error) {
-	id := utils.ParseInt(r.PathValue("id"), -1)
+func PathID(r *http.Request, key string) (int, error) {
+	id := utils.ParseInt(r.PathValue(key), -1)
 	if id < 0 {
 		return 0, fmt.Errorf("invalid id %q: %w", r.PathValue("id"), apperrors.ErrInvalidInput)
 	}

@@ -6,12 +6,39 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/As71er/once/internal/apperrors"
 	"github.com/As71er/once/internal/metadata"
 	"github.com/As71er/once/internal/releases"
 	"github.com/As71er/once/internal/utils"
 )
+
+type UploadTrackProcessor struct {
+	repository  Repository
+	fileManager utils.FileManager
+	dbWrite     *sync.Mutex
+}
+
+func NewUploadTrackProcessor(repository Repository, fileManager utils.FileManager,
+	dbWrite *sync.Mutex) *UploadTrackProcessor {
+	return &UploadTrackProcessor{
+		repository:  repository,
+		fileManager: fileManager,
+		dbWrite:     dbWrite,
+	}
+}
+
+type UploadTrackJob struct {
+	Dir       string
+	ReleaseID int64
+	File      UploadTrack
+}
+
+type UploadTrackResult struct {
+	Track IndexedTrack
+	FileStatus
+}
 
 type FileStatus string
 
@@ -21,58 +48,51 @@ const (
 	FileError   FileStatus = "error"
 )
 
-type FileOut struct {
-	Track IndexedTrack
-	FileStatus
-}
+func (p *UploadTrackProcessor) Process(ctx context.Context, job UploadTrackJob) (UploadTrackResult, error) {
+	dir := job.Dir
+	releaseID := job.ReleaseID
+	trackFile := job.File
 
-type Input struct {
-	dir       string
-	releaseID int64
-	file      UploadTrack
-}
-
-func (ts *TrackService) ProcessUploadedFile(ctx context.Context, dir string, releaseID int64, trackFile UploadTrack) (FileOut, error) {
-	fileExist, err := ts.fileManager.FileExists(trackFile.Name, dir)
+	fileExist, err := p.fileManager.FileExists(trackFile.Name, dir)
 	if err != nil {
-		return FileOut{
+		return UploadTrackResult{
 			FileStatus: FileError,
 		}, err
 	}
 	if fileExist {
-		return FileOut{
+		return UploadTrackResult{
 			FileStatus: FileSkipped,
 		}, nil
 	}
 
 	file, err := trackFile.Open()
 	if err != nil {
-		return FileOut{
+		return UploadTrackResult{
 			FileStatus: FileError,
 		}, fmt.Errorf("open upload file: %w", errors.Join(apperrors.ErrInvalidInput, err))
 	}
 
 	// Metadata extraction for index
-	path, err := ts.fileManager.WriteFile(file, trackFile.Name, dir)
+	path, err := p.fileManager.WriteFile(file, trackFile.Name, dir)
 	file.Close()
 	if err != nil {
-		ts.fileManager.DeleteFile(trackFile.Name, dir)
-		return FileOut{
+		p.fileManager.DeleteFile(trackFile.Name, dir)
+		return UploadTrackResult{
 			FileStatus: FileError,
 		}, fmt.Errorf("write upload file: %w", err)
 	}
 
 	tags, err := metadata.Extract(path)
 	if err != nil {
-		ts.fileManager.DeleteFile(trackFile.Name, dir)
-		return FileOut{
+		p.fileManager.DeleteFile(trackFile.Name, dir)
+		return UploadTrackResult{
 			FileStatus: FileError,
 		}, err
 	}
 
 	if tags.Format.FormatName == "" {
-		ts.fileManager.DeleteFile(trackFile.Name, dir)
-		return FileOut{
+		p.fileManager.DeleteFile(trackFile.Name, dir)
+		return UploadTrackResult{
 			FileStatus: FileError,
 		}, fmt.Errorf("could not determine format for %s: %w", trackFile.Name, apperrors.ErrInvalidInput)
 	}
@@ -84,35 +104,36 @@ func (ts *TrackService) ProcessUploadedFile(ctx context.Context, dir string, rel
 
 	// Actually changed
 	if normalized != trackFile.Name {
-		fileExist, err := ts.fileManager.FileExists(normalized, dir)
+		fileExist, err := p.fileManager.FileExists(normalized, dir)
 		if err != nil {
-			return FileOut{
+			return UploadTrackResult{
 				FileStatus: FileError,
 			}, err
 		}
 		if fileExist {
 			// Revert first write without normalized name
-			if err := ts.fileManager.DeleteFile(path, dir); err != nil {
-				return FileOut{
+			if err := p.fileManager.DeleteFile(path, dir); err != nil {
+				return UploadTrackResult{
 					FileStatus: FileError,
 				}, err
 			}
-			return FileOut{
+			return UploadTrackResult{
 				FileStatus: FileSkipped,
 			}, nil
 		}
 
-		if _, err := ts.fileManager.RenameFile(trackFile.Name, normalized, dir); err != nil {
-			return FileOut{
+		if _, err := p.fileManager.RenameFile(trackFile.Name, normalized, dir); err != nil {
+			return UploadTrackResult{
 				FileStatus: FileError,
 			}, err
 		}
 	}
 
-	ts.dbWrite.Lock()
-	created, err := ts.repository.InsertTrack(ctx, Track{
+	p.dbWrite.Lock()
+	created, err := p.repository.InsertTrack(ctx, Track{
 		Title:    tags.Title,
 		Duration: utils.ParseFloat(tags.Streams[0].Duration, 0),
+		Artist:   tags.Artist,
 		Track:    int64(tags.TrackNumber),
 		Disc:     int64(tags.DiscNumber),
 		Composer: tags.Composer,
@@ -127,9 +148,9 @@ func (ts *TrackService) ProcessUploadedFile(ctx context.Context, dir string, rel
 		SampleRate: int64(utils.ParseInt(tags.Streams[0].SampleRate, 0)),
 		Size:       int64(utils.ParseInt(tags.Format.FileSize, 0)),
 	})
-	ts.dbWrite.Unlock()
+	p.dbWrite.Unlock()
 	if err != nil {
-		return FileOut{
+		return UploadTrackResult{
 			FileStatus: FileError,
 		}, err
 	}
@@ -137,6 +158,7 @@ func (ts *TrackService) ProcessUploadedFile(ctx context.Context, dir string, rel
 	indexedTrack := IndexedTrack{
 		ID:        created.ID,
 		Title:     created.Title,
+		Artist:    tags.Artist,
 		Duration:  created.Duration,
 		Track:     created.Track,
 		Disc:      created.Disc,
@@ -145,7 +167,7 @@ func (ts *TrackService) ProcessUploadedFile(ctx context.Context, dir string, rel
 		AudioFile: created.AudioFile,
 	}
 
-	return FileOut{
+	return UploadTrackResult{
 		Track:      indexedTrack,
 		FileStatus: FileIndexed,
 	}, nil

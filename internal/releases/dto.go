@@ -25,14 +25,15 @@ type CreatedReleaseRes struct {
 }
 
 type ReleaseRes struct {
-	ID          int64   `json:"id"`
-	Title       string  `json:"title"`
-	Duration    float64 `json:"duration"`
-	ReleaseType string  `json:"release_type"`
-	Date        string  `json:"date"`
-	TotalTracks uint    `json:"total_tracks"`
-	TotalDiscs  uint    `json:"total_discs"`
-	CoverID     int64   `json:"cover_id"`
+	ID          int64              `json:"id"`
+	Title       string             `json:"title"`
+	Duration    float64            `json:"duration"`
+	ReleaseType string             `json:"release_type"`
+	Date        string             `json:"date"`
+	TotalTracks uint               `json:"total_tracks"`
+	TotalDiscs  uint               `json:"total_discs"`
+	CoverID     int64              `json:"cover_id"`
+	Artists     []ReleaseArtistRef `json:"artists"`
 }
 
 type ReleaseListRes struct {

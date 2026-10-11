@@ -1,14 +1,16 @@
 package releases
 
 type Release struct {
-	ID          int64  `json:"id"`
-	Title       string `json:"title"`
-	Name        string `json:"name"`
-	ReleaseType string `json:"release_type"`
-	Date        string `json:"date"`
-	TotalTracks uint   `json:"total_tracks"`
-	TotalDiscs  uint   `json:"total_discs"`
-	Cover       *Cover `json:"cover"`
+	ID            int64              `json:"id"`
+	Title         string             `json:"title"`
+	Name          string             `json:"name"`
+	ReleaseType   string             `json:"release_type"`
+	Date          string             `json:"date"`
+	TotalTracks   uint               `json:"total_tracks"`
+	TotalDiscs    uint               `json:"total_discs"`
+	TotalDuration uint               `json:"total_duration"`
+	Cover         *Cover             `json:"cover"`
+	Artists       []ReleaseArtistRef `json:"artists"`
 }
 
 type Cover struct {
@@ -33,4 +35,9 @@ func (r ReleaseType) Valid() bool {
 	default:
 		return false
 	}
+}
+
+type ReleaseArtistRef struct {
+	ID   int64  `json:"id"`
+	Name string `json:"name"`
 }

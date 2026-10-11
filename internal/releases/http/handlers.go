@@ -1,4 +1,4 @@
-package releases
+package http
 
 import (
 	"encoding/json"
@@ -7,14 +7,15 @@ import (
 
 	"github.com/As71er/once/internal/apperrors"
 	"github.com/As71er/once/internal/httpx"
+	"github.com/As71er/once/internal/releases"
 	"github.com/As71er/once/internal/utils"
 )
 
 type handler struct {
-	service Service
+	service releases.Service
 }
 
-func NewHandler(service Service) *handler {
+func NewHandler(service releases.Service) *handler {
 	return &handler{
 		service,
 	}
@@ -23,7 +24,7 @@ func NewHandler(service Service) *handler {
 func (h *handler) CreateRelease(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 
-	var release CreateReleaseReq
+	var release releases.CreateReleaseReq
 	if err := json.NewDecoder(r.Body).Decode(&release); err != nil {
 		httpx.Error(w, r, fmt.Errorf("invalid body request: %w", apperrors.ErrInvalidInput))
 		return
@@ -39,7 +40,7 @@ func (h *handler) CreateRelease(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) GetReleaseById(w http.ResponseWriter, r *http.Request) {
-	id, err := httpx.PathID(r)
+	id, err := httpx.PathID(r, "id")
 	if err != nil {
 		httpx.Error(w, r, err)
 		return
@@ -74,7 +75,7 @@ func (h *handler) ListReleases(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) DownloadReleaseCover(w http.ResponseWriter, r *http.Request) {
-	id, err := httpx.PathID(r)
+	id, err := httpx.PathID(r, "id")
 	if err != nil {
 		httpx.Error(w, r, err)
 		return
@@ -91,7 +92,7 @@ func (h *handler) DownloadReleaseCover(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) DownloadReleaseCoverThumb(w http.ResponseWriter, r *http.Request) {
-	id, err := httpx.PathID(r)
+	id, err := httpx.PathID(r, "id")
 	if err != nil {
 		httpx.Error(w, r, err)
 		return
@@ -108,7 +109,7 @@ func (h *handler) DownloadReleaseCoverThumb(w http.ResponseWriter, r *http.Reque
 }
 
 func (h *handler) DeleteRelease(w http.ResponseWriter, r *http.Request) {
-	id, err := httpx.PathID(r)
+	id, err := httpx.PathID(r, "id")
 	if err != nil {
 		httpx.Error(w, r, err)
 		return

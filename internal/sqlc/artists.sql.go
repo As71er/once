@@ -7,45 +7,52 @@ package sqlc
 
 import (
 	"context"
+	"database/sql"
 )
 
-const addArtistRelease = `-- name: AddArtistRelease :exec
+const addReleaseArtist = `-- name: AddReleaseArtist :one
 
 
 INSERT INTO release_artists
 (release_id, artist_id)
 VALUES (?, ?)
+RETURNING release_id, artist_id
 `
 
-type AddArtistReleaseParams struct {
+type AddReleaseArtistParams struct {
 	ReleaseID int64 `json:"release_id"`
 	ArtistID  int64 `json:"artist_id"`
 }
 
 // -----------------------------------------------------------------------
-func (q *Queries) AddArtistRelease(ctx context.Context, arg AddArtistReleaseParams) error {
-	_, err := q.db.ExecContext(ctx, addArtistRelease, arg.ReleaseID, arg.ArtistID)
-	return err
+func (q *Queries) AddReleaseArtist(ctx context.Context, arg AddReleaseArtistParams) (ReleaseArtist, error) {
+	row := q.db.QueryRowContext(ctx, addReleaseArtist, arg.ReleaseID, arg.ArtistID)
+	var i ReleaseArtist
+	err := row.Scan(&i.ReleaseID, &i.ArtistID)
+	return i, err
 }
 
-const addArtistTrack = `-- name: AddArtistTrack :exec
+const addTrackArtist = `-- name: AddTrackArtist :one
 
 
 INSERT INTO track_artists
 (track_id, artist_id, role)
 VALUES (?, ?, ?)
+RETURNING track_id, artist_id, role
 `
 
-type AddArtistTrackParams struct {
+type AddTrackArtistParams struct {
 	TrackID  int64  `json:"track_id"`
 	ArtistID int64  `json:"artist_id"`
 	Role     string `json:"role"`
 }
 
 // -----------------------------------------------------------------------
-func (q *Queries) AddArtistTrack(ctx context.Context, arg AddArtistTrackParams) error {
-	_, err := q.db.ExecContext(ctx, addArtistTrack, arg.TrackID, arg.ArtistID, arg.Role)
-	return err
+func (q *Queries) AddTrackArtist(ctx context.Context, arg AddTrackArtistParams) (TrackArtist, error) {
+	row := q.db.QueryRowContext(ctx, addTrackArtist, arg.TrackID, arg.ArtistID, arg.Role)
+	var i TrackArtist
+	err := row.Scan(&i.TrackID, &i.ArtistID, &i.Role)
+	return i, err
 }
 
 const createArtist = `-- name: CreateArtist :one
@@ -61,14 +68,17 @@ func (q *Queries) CreateArtist(ctx context.Context, name string) (Artist, error)
 	return i, err
 }
 
-const deleteArtist = `-- name: DeleteArtist :exec
+const deleteArtist = `-- name: DeleteArtist :execrows
 DELETE FROM artists
 WHERE id = ?
 `
 
-func (q *Queries) DeleteArtist(ctx context.Context, id int64) error {
-	_, err := q.db.ExecContext(ctx, deleteArtist, id)
-	return err
+func (q *Queries) DeleteArtist(ctx context.Context, id int64) (int64, error) {
+	result, err := q.db.ExecContext(ctx, deleteArtist, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const getArtistById = `-- name: GetArtistById :one
@@ -95,24 +105,30 @@ func (q *Queries) GetArtistByName(ctx context.Context, name string) (Artist, err
 	return i, err
 }
 
-const getReleaseArtists = `-- name: GetReleaseArtists :many
-SELECT ar.id, ar.name
+const getReleaseArtistsByReleaseId = `-- name: GetReleaseArtistsByReleaseId :many
+SELECT ar.id as artist_id, ar.name, ra.release_id
 FROM release_artists ra
 JOIN artists ar ON ra.artist_id = ar.id
 WHERE ra.release_id = ?
 ORDER BY ar.name
 `
 
-func (q *Queries) GetReleaseArtists(ctx context.Context, releaseID int64) ([]Artist, error) {
-	rows, err := q.db.QueryContext(ctx, getReleaseArtists, releaseID)
+type GetReleaseArtistsByReleaseIdRow struct {
+	ArtistID  int64  `json:"artist_id"`
+	Name      string `json:"name"`
+	ReleaseID int64  `json:"release_id"`
+}
+
+func (q *Queries) GetReleaseArtistsByReleaseId(ctx context.Context, releaseID int64) ([]GetReleaseArtistsByReleaseIdRow, error) {
+	rows, err := q.db.QueryContext(ctx, getReleaseArtistsByReleaseId, releaseID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []Artist
+	var items []GetReleaseArtistsByReleaseIdRow
 	for rows.Next() {
-		var i Artist
-		if err := rows.Scan(&i.ID, &i.Name); err != nil {
+		var i GetReleaseArtistsByReleaseIdRow
+		if err := rows.Scan(&i.ArtistID, &i.Name, &i.ReleaseID); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -126,7 +142,34 @@ func (q *Queries) GetReleaseArtists(ctx context.Context, releaseID int64) ([]Art
 	return items, nil
 }
 
-const getTrackArtists = `-- name: GetTrackArtists :many
+const getTrackArtistsByName = `-- name: GetTrackArtistsByName :one
+SELECT track_id, artist_id, role, id, name FROM track_artists as ta
+JOIN artists AS a ON ta.artist_id = a.id
+WHERE a.name = ?
+`
+
+type GetTrackArtistsByNameRow struct {
+	TrackID  int64  `json:"track_id"`
+	ArtistID int64  `json:"artist_id"`
+	Role     string `json:"role"`
+	ID       int64  `json:"id"`
+	Name     string `json:"name"`
+}
+
+func (q *Queries) GetTrackArtistsByName(ctx context.Context, name string) (GetTrackArtistsByNameRow, error) {
+	row := q.db.QueryRowContext(ctx, getTrackArtistsByName, name)
+	var i GetTrackArtistsByNameRow
+	err := row.Scan(
+		&i.TrackID,
+		&i.ArtistID,
+		&i.Role,
+		&i.ID,
+		&i.Name,
+	)
+	return i, err
+}
+
+const getTrackArtistsByTrackId = `-- name: GetTrackArtistsByTrackId :many
 SELECT ar.id, ar.name, ta.role
 FROM track_artists ta
 JOIN artists AS ar ON ta.artist_id = ar.id
@@ -138,21 +181,21 @@ ORDER BY
     END, ar.name
 `
 
-type GetTrackArtistsRow struct {
+type GetTrackArtistsByTrackIdRow struct {
 	ID   int64  `json:"id"`
 	Name string `json:"name"`
 	Role string `json:"role"`
 }
 
-func (q *Queries) GetTrackArtists(ctx context.Context, trackID int64) ([]GetTrackArtistsRow, error) {
-	rows, err := q.db.QueryContext(ctx, getTrackArtists, trackID)
+func (q *Queries) GetTrackArtistsByTrackId(ctx context.Context, trackID int64) ([]GetTrackArtistsByTrackIdRow, error) {
+	rows, err := q.db.QueryContext(ctx, getTrackArtistsByTrackId, trackID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []GetTrackArtistsRow
+	var items []GetTrackArtistsByTrackIdRow
 	for rows.Next() {
-		var i GetTrackArtistsRow
+		var i GetTrackArtistsByTrackIdRow
 		if err := rows.Scan(&i.ID, &i.Name, &i.Role); err != nil {
 			return nil, err
 		}
@@ -167,7 +210,7 @@ func (q *Queries) GetTrackArtists(ctx context.Context, trackID int64) ([]GetTrac
 	return items, nil
 }
 
-const getTracksByArtist = `-- name: GetTracksByArtist :many
+const getTracksByArtistId = `-- name: GetTracksByArtistId :many
 SELECT t.id, t.title, r.name AS release_name, ta.role
 FROM track_artists ta
 JOIN tracks t ON ta.track_id = t.id
@@ -176,22 +219,22 @@ WHERE ta.artist_id = ?
 ORDER BY r.date DESC, t.track
 `
 
-type GetTracksByArtistRow struct {
+type GetTracksByArtistIdRow struct {
 	ID          int64  `json:"id"`
 	Title       string `json:"title"`
 	ReleaseName string `json:"release_name"`
 	Role        string `json:"role"`
 }
 
-func (q *Queries) GetTracksByArtist(ctx context.Context, artistID int64) ([]GetTracksByArtistRow, error) {
-	rows, err := q.db.QueryContext(ctx, getTracksByArtist, artistID)
+func (q *Queries) GetTracksByArtistId(ctx context.Context, artistID int64) ([]GetTracksByArtistIdRow, error) {
+	rows, err := q.db.QueryContext(ctx, getTracksByArtistId, artistID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []GetTracksByArtistRow
+	var items []GetTracksByArtistIdRow
 	for rows.Next() {
-		var i GetTracksByArtistRow
+		var i GetTracksByArtistIdRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.Title,
@@ -215,10 +258,16 @@ const listArtists = `-- name: ListArtists :many
 SELECT id, name
 FROM artists
 ORDER BY name
+LIMIT ? OFFSET ?
 `
 
-func (q *Queries) ListArtists(ctx context.Context) ([]Artist, error) {
-	rows, err := q.db.QueryContext(ctx, listArtists)
+type ListArtistsParams struct {
+	Limit  int64 `json:"limit"`
+	Offset int64 `json:"offset"`
+}
+
+func (q *Queries) ListArtists(ctx context.Context, arg ListArtistsParams) ([]Artist, error) {
+	rows, err := q.db.QueryContext(ctx, listArtists, arg.Limit, arg.Offset)
 	if err != nil {
 		return nil, err
 	}
@@ -240,7 +289,57 @@ func (q *Queries) ListArtists(ctx context.Context) ([]Artist, error) {
 	return items, nil
 }
 
-const removeReleaseArtist = `-- name: RemoveReleaseArtist :exec
+const listTracksArtistsByRelease = `-- name: ListTracksArtistsByRelease :many
+SELECT ta.track_id, ar.id AS artist_id, ar.name AS artist_name, ta.role
+FROM track_artists AS ta
+JOIN artists AS ar ON ta.artist_id = ar.id
+JOIN tracks AS tr ON ta.track_id = tr.id
+JOIN releases AS re ON tr.release_id = re.id
+WHERE re.id = ?
+ORDER BY ta.track_id,
+    CASE ta.role
+        WHEN 'primary'  THEN 1
+        WHEN 'featured' THEN 2
+    END,
+    ar.name
+`
+
+type ListTracksArtistsByReleaseRow struct {
+	TrackID    int64  `json:"track_id"`
+	ArtistID   int64  `json:"artist_id"`
+	ArtistName string `json:"artist_name"`
+	Role       string `json:"role"`
+}
+
+func (q *Queries) ListTracksArtistsByRelease(ctx context.Context, id int64) ([]ListTracksArtistsByReleaseRow, error) {
+	rows, err := q.db.QueryContext(ctx, listTracksArtistsByRelease, id)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListTracksArtistsByReleaseRow
+	for rows.Next() {
+		var i ListTracksArtistsByReleaseRow
+		if err := rows.Scan(
+			&i.TrackID,
+			&i.ArtistID,
+			&i.ArtistName,
+			&i.Role,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const removeReleaseArtist = `-- name: RemoveReleaseArtist :execrows
 DELETE FROM release_artists
 WHERE release_id = ? AND artist_id = ?
 `
@@ -250,12 +349,15 @@ type RemoveReleaseArtistParams struct {
 	ArtistID  int64 `json:"artist_id"`
 }
 
-func (q *Queries) RemoveReleaseArtist(ctx context.Context, arg RemoveReleaseArtistParams) error {
-	_, err := q.db.ExecContext(ctx, removeReleaseArtist, arg.ReleaseID, arg.ArtistID)
-	return err
+func (q *Queries) RemoveReleaseArtist(ctx context.Context, arg RemoveReleaseArtistParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, removeReleaseArtist, arg.ReleaseID, arg.ArtistID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
-const removeTrackArtist = `-- name: RemoveTrackArtist :exec
+const removeTrackArtist = `-- name: RemoveTrackArtist :execrows
 DELETE FROM track_artists
 WHERE track_id = ? AND artist_id = ?
 `
@@ -265,15 +367,19 @@ type RemoveTrackArtistParams struct {
 	ArtistID int64 `json:"artist_id"`
 }
 
-func (q *Queries) RemoveTrackArtist(ctx context.Context, arg RemoveTrackArtistParams) error {
-	_, err := q.db.ExecContext(ctx, removeTrackArtist, arg.TrackID, arg.ArtistID)
-	return err
+func (q *Queries) RemoveTrackArtist(ctx context.Context, arg RemoveTrackArtistParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, removeTrackArtist, arg.TrackID, arg.ArtistID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
-const updateArtist = `-- name: UpdateArtist :exec
+const updateArtist = `-- name: UpdateArtist :one
 UPDATE artists
 SET name = ?
 WHERE id = ?
+RETURNING id, name
 `
 
 type UpdateArtistParams struct {
@@ -281,12 +387,14 @@ type UpdateArtistParams struct {
 	ID   int64  `json:"id"`
 }
 
-func (q *Queries) UpdateArtist(ctx context.Context, arg UpdateArtistParams) error {
-	_, err := q.db.ExecContext(ctx, updateArtist, arg.Name, arg.ID)
-	return err
+func (q *Queries) UpdateArtist(ctx context.Context, arg UpdateArtistParams) (Artist, error) {
+	row := q.db.QueryRowContext(ctx, updateArtist, arg.Name, arg.ID)
+	var i Artist
+	err := row.Scan(&i.ID, &i.Name)
+	return i, err
 }
 
-const updateTrackArtistRole = `-- name: UpdateTrackArtistRole :exec
+const updateTrackArtistRole = `-- name: UpdateTrackArtistRole :execresult
 UPDATE track_artists
 SET role = ?
 WHERE track_id = ? AND artist_id = ?
@@ -298,7 +406,6 @@ type UpdateTrackArtistRoleParams struct {
 	ArtistID int64  `json:"artist_id"`
 }
 
-func (q *Queries) UpdateTrackArtistRole(ctx context.Context, arg UpdateTrackArtistRoleParams) error {
-	_, err := q.db.ExecContext(ctx, updateTrackArtistRole, arg.Role, arg.TrackID, arg.ArtistID)
-	return err
+func (q *Queries) UpdateTrackArtistRole(ctx context.Context, arg UpdateTrackArtistRoleParams) (sql.Result, error) {
+	return q.db.ExecContext(ctx, updateTrackArtistRole, arg.Role, arg.TrackID, arg.ArtistID)
 }

@@ -1,10 +1,12 @@
-package tracks
+package http
 
 import (
 	"io"
 	"net/http"
 
 	"github.com/As71er/once/internal/httpx"
+	"github.com/As71er/once/internal/tracks"
+	"github.com/As71er/once/internal/tracks/usecases"
 	"github.com/As71er/once/internal/utils"
 )
 
@@ -13,19 +15,21 @@ type Limits struct {
 }
 
 type handler struct {
-	service Service
-	limits  Limits
+	service  tracks.Service
+	limits   Limits
+	usecases usecases.TrackUseCases
 }
 
-func NewHandler(service Service, limits Limits) *handler {
+func NewHandler(service tracks.Service, limits Limits, usecases usecases.TrackUseCases) *handler {
 	return &handler{
 		service,
 		limits,
+		usecases,
 	}
 }
 
 func (h *handler) GetTrackById(w http.ResponseWriter, r *http.Request) {
-	id, err := httpx.PathID(r)
+	id, err := httpx.PathID(r, "id")
 	if err != nil {
 		httpx.Error(w, r, err)
 		return
@@ -41,7 +45,7 @@ func (h *handler) GetTrackById(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) GetTrack(w http.ResponseWriter, r *http.Request) {
-	id, err := httpx.PathID(r)
+	id, err := httpx.PathID(r, "id")
 	if err != nil {
 		httpx.Error(w, r, err)
 		return
@@ -65,7 +69,7 @@ func (h *handler) UploadTracks(w http.ResponseWriter, r *http.Request) {
 	extract := utils.ParseBool(extractCoverStr, true)
 	coverIdx := utils.ParseInt(coverIdxStr, 0)
 
-	id, err := httpx.PathID(r)
+	id, err := httpx.PathID(r, "id")
 	if err != nil {
 		httpx.Error(w, r, err)
 		return
@@ -76,10 +80,10 @@ func (h *handler) UploadTracks(w http.ResponseWriter, r *http.Request) {
 	}
 
 	headers := r.MultipartForm.File["tracks"]
-	request := make([]UploadTrack, 0, len(headers))
+	request := make([]tracks.UploadTrack, 0, len(headers))
 
 	for _, header := range headers {
-		request = append(request, UploadTrack{
+		request = append(request, tracks.UploadTrack{
 			Name: header.Filename,
 			Open: func() (io.ReadCloser, error) {
 				return header.Open()
@@ -87,14 +91,14 @@ func (h *handler) UploadTracks(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	req := UploadTracksReq{
+	req := tracks.UploadTracksReq{
 		ReleaseID:    int64(id),
 		ExtractCover: extract,
 		CoverIdx:     coverIdx,
 		Uploaded:     request,
 	}
 
-	response, err := h.service.UploadTracks(r.Context(), req)
+	response, err := h.usecases.UploadTracks(r.Context(), req)
 	if err != nil {
 		httpx.Error(w, r, err)
 		return
@@ -104,7 +108,7 @@ func (h *handler) UploadTracks(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) ListTracksRelease(w http.ResponseWriter, r *http.Request) {
-	id, err := httpx.PathID(r)
+	id, err := httpx.PathID(r, "id")
 	if err != nil {
 		httpx.Error(w, r, err)
 		return
@@ -120,7 +124,7 @@ func (h *handler) ListTracksRelease(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) DeleteTrack(w http.ResponseWriter, r *http.Request) {
-	id, err := httpx.PathID(r)
+	id, err := httpx.PathID(r, "id")
 	if err != nil {
 		httpx.Error(w, r, err)
 		return

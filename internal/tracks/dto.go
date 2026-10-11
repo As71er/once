@@ -33,6 +33,7 @@ type IndexedTrack struct {
 	ID        int64     `json:"id"`
 	Title     string    `json:"title"`
 	Duration  float64   `json:"duration"`
+	Artist    []string  `json:"artist"`
 	Track     int64     `json:"track"`
 	Disc      int64     `json:"disc"`
 	Composer  string    `json:"composer"`
@@ -46,17 +47,18 @@ type IgnoredIndexedTrack struct {
 }
 
 type TrackSummary struct {
-	ID          int64   `json:"id"`
-	Title       string  `json:"title"`
-	Duration    float64 `json:"duration"`
-	Track       int64   `json:"track"`
-	Disc        int64   `json:"disc"`
-	Composer    string  `json:"composer"`
-	AudioFileID *int64  `json:"audio_file_id"`
-	ReleaseID   *int64  `json:"release_id"`
+	ID          int64            `json:"id"`
+	Title       string           `json:"title"`
+	Duration    float64          `json:"duration"`
+	Track       int64            `json:"track"`
+	Disc        int64            `json:"disc"`
+	Composer    string           `json:"composer"`
+	Artists     []TrackArtistRef `json:"artists"`
+	AudioFileID *int64           `json:"audio_file_id"`
+	ReleaseID   *int64           `json:"release_id"`
 }
 
-type ListTracksRelease struct {
+type ListTracksReleaseRes struct {
 	ReleaseID *int64         `json:"release_id"`
 	CoverID   *int64         `json:"cover_id"`
 	Tracks    []TrackSummary `json:"data"`
